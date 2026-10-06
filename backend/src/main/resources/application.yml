@@ -1,0 +1,209 @@
+server:
+  port: ${SERVER_PORT:8080}
+  shutdown: graceful
+  error:
+    include-stacktrace: never
+    include-message: never
+  tomcat:
+    max-swallow-size: -1
+    max-http-form-post-size: 2MB
+
+spring:
+  application:
+    name: veridoc-ai
+
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/veridoc}
+    username: ${DATABASE_USERNAME:veridoc}
+    password: ${DATABASE_PASSWORD:veridoc}
+    hikari:
+      maximum-pool-size: ${DATABASE_POOL_SIZE:10}
+      minimum-idle: 2
+      # Hikari expects milliseconds, not a duration string.
+      connection-timeout: 10000
+      validation-timeout: 5000
+      idle-timeout: 300000
+      max-lifetime: 1200000
+      pool-name: veridoc-cp
+
+  jpa:
+    # Schema is owned by Flyway. Hibernate must never create or mutate it.
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          batch_size: 100
+          time_zone: UTC
+        order_inserts: true
+        order_updates: true
+        jdbc.batch_versioned_data: true
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    validate-on-migrate: true
+
+  servlet:
+    multipart:
+      enabled: true
+      # Hard ceiling enforced by the container. The application additionally
+      # rejects anything larger than veridoc.storage.max-file-size.
+      max-file-size: ${MAX_FILE_SIZE:20MB}
+      max-request-size: ${MAX_REQUEST_SIZE:22MB}
+      file-size-threshold: 0B
+
+  data:
+    redis:
+      url: ${REDIS_URL:redis://localhost:6379}
+      timeout: 2s
+      connect-timeout: 2s
+
+  ai:
+    google:
+      genai:
+        # Read only by the backend. Never exposed to the browser.
+        # Spring AI 2.x declares the chat connection at this prefix and the
+        # embedding connection under ...genai.embedding, so the key is set in
+        # both places.
+        api-key: ${GEMINI_API_KEY:}
+        chat:
+          options:
+            model: ${GEMINI_CHAT_MODEL:gemini-2.5-flash}
+            # Low temperature: the model must faithfully restate evidence
+            # rather than embellish it.
+            temperature: 0.1
+            max-output-tokens: ${GEMINI_MAX_OUTPUT_TOKENS:2048}
+            top-p: 0.95
+        embedding:
+          api-key: ${GEMINI_API_KEY:}
+          text:
+            options:
+              model: ${GEMINI_EMBEDDING_MODEL:text-embedding-004}
+              dimensions: ${GEMINI_EMBEDDING_DIMENSIONS:768}
+              # Overridden per call: documents use RETRIEVAL_DOCUMENT and
+              # queries use RETRIEVAL_QUERY.
+              task-type: RETRIEVAL_DOCUMENT
+
+  threads:
+    virtual:
+      enabled: true
+
+  task:
+    execution:
+      pool:
+        core-size: 4
+        max-size: 16
+        queue-capacity: 200
+        thread-name-prefix: veridoc-task-
+      shutdown:
+        await-termination: true
+        await-termination-period: 30s
+
+# =====================================================================
+# VeriDoc application configuration
+# =====================================================================
+veridoc:
+  jwt:
+    # Must be >= 32 bytes. Supplied via JWT_SECRET.
+    secret: ${JWT_SECRET:}
+    issuer: ${JWT_ISSUER:veridoc-ai}
+    access-token-ttl: ${JWT_ACCESS_TTL:PT1H}
+    refresh-token-ttl: ${JWT_REFRESH_TTL:P30D}
+
+  storage:
+    root: ${STORAGE_ROOT:./data/storage}
+    max-file-size: ${MAX_FILE_SIZE_BYTES:20971520}
+    max-pages: ${MAX_PDF_PAGES:500}
+
+  chunking:
+    max-tokens: ${CHUNK_MAX_TOKENS:700}
+    overlap-tokens: ${CHUNK_OVERLAP_TOKENS:100}
+    min-tokens: ${CHUNK_MIN_TOKENS:40}
+
+  embedding:
+    model: ${GEMINI_EMBEDDING_MODEL:text-embedding-004}
+    dimensions: ${GEMINI_EMBEDDING_DIMENSIONS:768}
+    version: ${EMBEDDING_VERSION:1}
+    batch-size: ${EMBEDDING_BATCH_SIZE:32}
+    document-task-type: RETRIEVAL_DOCUMENT
+    query-task-type: RETRIEVAL_QUERY
+
+  retrieval:
+    top-k: ${RETRIEVAL_TOP_K:8}
+    min-score: ${RETRIEVAL_MIN_SCORE:0.15}
+    candidate-k: ${RETRIEVAL_CANDIDATE_K:40}
+    max-documents-per-conversation: ${RETRIEVAL_MAX_DOCS:20}
+
+  rag:
+    history-messages: ${RAG_HISTORY_MESSAGES:8}
+    max-context-tokens: ${RAG_MAX_CONTEXT_TOKENS:12000}
+    enable-query-rewriting: ${RAG_ENABLE_QUERY_REWRITING:true}
+    no-evidence-answer: "I couldn't find enough information in the uploaded documents to answer that."
+    debug-enabled: ${RAG_DEBUG_ENABLED:false}
+
+  ai:
+    chat-model: ${GEMINI_CHAT_MODEL:gemini-2.5-flash}
+    embedding-model: ${GEMINI_EMBEDDING_MODEL:text-embedding-004}
+    # Bounded retries with exponential backoff. Never retry indefinitely.
+    max-attempts: ${AI_MAX_ATTEMPTS:3}
+    initial-backoff: ${AI_INITIAL_BACKOFF:PT1S}
+    max-backoff: ${AI_MAX_BACKOFF:PT20S}
+
+  rate-limit:
+    enabled: ${RATE_LIMIT_ENABLED:true}
+    login: ${RL_LOGIN:10/PT1M}
+    upload: ${RL_UPLOAD:20/PT1H}
+    chat: ${RL_CHAT:60/PT1H}
+    processing: ${RL_PROCESSING:30/PT1H}
+
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:3000}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,flyway
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when-authorized
+  health:
+    db:
+      enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+  info:
+    env:
+      enabled: true
+  observations:
+    key-values:
+      application: ${spring.application.name}
+
+info:
+  app:
+    name: ${spring.application.name}
+    description: Evidence-Grounded Document Intelligence Platform
+    version: @project.version@
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: alpha
+    tags-sorter: alpha
+
+logging:
+  level:
+    root: INFO
+    com.veridoc.ai: ${LOG_LEVEL:INFO}
+    org.springframework.ai: ${LOG_LEVEL_AI:INFO}
+    org.hibernate.SQL: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %-5level [%X{traceId:-},%X{userId:-}] %logger{36} - %msg%n"

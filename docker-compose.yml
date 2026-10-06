@@ -1,0 +1,91 @@
+# ---- VeriDoc AI :: local development stack ----
+# Postgres (pgvector) + Redis + the backend. Copy .env.example to .env first:
+#   cp .env.example .env   then fill in GEMINI_API_KEY and JWT_SECRET.
+#
+# Note the host-side overrides below: inside the compose network services are
+# reachable by service name, not via localhost, so DATABASE_URL and REDIS_URL
+# must be overridden for the container even though the .env values point at
+# localhost for non-Docker runs.
+
+name: veridoc
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_DB: ${DATABASE_NAME:-veridoc}
+      POSTGRES_USER: ${DATABASE_USERNAME:-veridoc}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?DATABASE_PASSWORD is required}
+      # Deterministic collation so index behaviour does not depend on the host
+      # locale.
+      POSTGRES_INITDB_ARGS: "--locale=C --encoding=UTF8"
+    ports:
+      - "${DATABASE_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      # Flyway cannot connect until the server accepts real connections; this
+      # is the condition the backend waits on.
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USERNAME:-veridoc} -d ${DATABASE_NAME:-veridoc}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    # Rate-limit counters only: eviction is acceptable, persistence is not
+    # needed, so maxmemory-policy is set to fail fast rather than silently
+    # dropping keys that a rate limiter is still counting.
+    command:
+      - redis-server
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+      - --maxmemory
+      - ${REDIS_MAXMEMORY:-256mb}
+      - --maxmemory-policy
+      - noeviction
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      # Compose-network addresses override the localhost values in .env.
+      DATABASE_URL: jdbc:postgresql://postgres:5432/${DATABASE_NAME:-veridoc}
+      REDIS_URL: redis://redis:6379
+      STORAGE_ROOT: /app/data/storage
+      # Passed explicitly: env_file alone does not override these, and the
+      # api-key is required by Spring AI's Google GenAI connection beans.
+      GEMINI_API_KEY: ${GEMINI_API_KEY:?GEMINI_API_KEY is required}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+    env_file:
+      # required: false so `docker compose up` also works when the values are
+      # exported into the shell instead of kept in .env.
+      - path: .env
+        required: false
+    ports:
+      - "${SERVER_PORT:-8080}:8080"
+    volumes:
+      - storage-data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  storage-data:
