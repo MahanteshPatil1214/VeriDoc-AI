@@ -67,7 +67,7 @@ public class TokenChunker {
         // handled by the caller's state in a real implementation. For this
         // iteration we keep the simple greedy split; overlap can be refined
         // without breaking the schema.
-        chunks.add(new Chunk(content, pageNumber, chunkIndex, tokens, Hashing.sha256(content)));
+        chunks.add(new Chunk(content, pageNumber, chunkIndex, tokens, Hashing.sha256Hex(content)));
     }
 
     private List<String> splitBySentence(String text) {

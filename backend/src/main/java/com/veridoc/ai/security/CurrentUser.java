@@ -1,49 +1,16 @@
 package com.veridoc.ai.security;
 
-import java.util.UUID;
-
-import org.springframework.security.core.context.SecurityContextHolder;
-
-import com.veridoc.ai.common.error.AppException;
-import com.veridoc.ai.common.error.ErrorCode;
-import com.veridoc.ai.common.trace.TraceContext;
-import com.veridoc.ai.security.authenticated.AuthenticatedUser;
+import java.lang.annotation.Documented;
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 
 /**
- * Single entry point for obtaining the current caller. Business services use
- * this instead of accepting a user id parameter, which makes it impossible to
- * forget the ownership check.
+ * Injects the currently authenticated user into controller method parameters.
  */
-public final class CurrentUser {
-
-    private CurrentUser() {
-    }
-
-    public static AuthenticatedUser require() {
-        AuthenticatedUser user = currentUser();
-        if (user == null) {
-            throw new AppException(ErrorCode.UNAUTHORIZED, "Authentication is required.");
-        }
-        return user;
-    }
-
-    public static UUID requireId() {
-        return require().userId();
-    }
-
-    public static AuthenticatedUser currentUser() {
-        var authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null || !authentication.isAuthenticated()) {
-            return null;
-        }
-        return authentication.getPrincipal() instanceof AuthenticatedUser user ? user : null;
-    }
-
-    /** Records the caller in the MDC for the remainder of the request. */
-    public static void bindToMdc() {
-        AuthenticatedUser user = currentUser();
-        if (user != null) {
-            org.slf4j.MDC.put(TraceContext.USER_ID, user.userId().toString());
-        }
-    }
+@Target(ElementType.PARAMETER)
+@Retention(RetentionPolicy.RUNTIME)
+@Documented
+public @interface CurrentUser {
 }

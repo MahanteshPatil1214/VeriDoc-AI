@@ -22,7 +22,7 @@ import com.veridoc.ai.document.api.dto.DocumentDtos.UploadResponse;
 import com.veridoc.ai.document.domain.Document;
 import com.veridoc.ai.document.domain.DocumentStatus;
 import com.veridoc.ai.document.persistence.DocumentRepository;
-import com.veridoc.ai.infrastructure.storage.LocalDocumentStorage;
+import com.veridoc.ai.document.storage.LocalDocumentStorage;
 import com.veridoc.ai.security.authenticated.AuthenticatedUser;
 
 /**
@@ -40,16 +40,14 @@ public class DocumentService {
     private final DocumentRepository documentRepository;
     private final LocalDocumentStorage storage;
     private final StorageProperties storageProperties;
-    private final FileNameSanitizer fileNameSanitizer;
+
 
     public DocumentService(DocumentRepository documentRepository,
                            LocalDocumentStorage storage,
-                           StorageProperties storageProperties,
-                           FileNameSanitizer fileNameSanitizer) {
+                           StorageProperties storageProperties) {
         this.documentRepository = documentRepository;
         this.storage = storage;
         this.storageProperties = storageProperties;
-        this.fileNameSanitizer = fileNameSanitizer;
     }
 
     /**
@@ -67,7 +65,7 @@ public class DocumentService {
             throw new AppException(ErrorCode.VALIDATION_FAILED, "Filename is required");
         }
 
-        String sanitized = fileNameSanitizer.sanitize(originalFilename);
+        String sanitized = com.veridoc.ai.common.security.FileNameSanitizer.sanitizeDisplayName(originalFilename);
         if (sanitized.isBlank()) {
             throw new AppException(ErrorCode.VALIDATION_FAILED, "Filename contains only invalid characters");
         }
@@ -83,7 +81,7 @@ public class DocumentService {
             // Do not blindly trust the client-provided content-type; PDFBox will
             // validate the bytes during extraction. For now we warn, but allow
             // the upload to proceed so extraction can fail with a precise error.
-            log.debug("Unusual content-type '{}' for upload by user {}", contentType, user.id());
+            log.debug("Unusual content-type '{}' for upload by user {}", contentType, user.userId());
         }
 
         byte[] bytes;
@@ -91,30 +89,26 @@ public class DocumentService {
             bytes = in.readAllBytes();
         }
 
-        String sha256 = Hashing.sha256(bytes);
+        String sha256 = Hashing.sha256Hex(bytes);
 
-        var existing = documentRepository.findByOwnerIdAndSha256AndStatusNot(user.id(), sha256, DocumentStatus.DELETED)
+        var existing = documentRepository.findByOwnerIdAndSha256AndStatusNot(user.userId(), sha256, DocumentStatus.DELETED)
                 .orElse(null);
         if (existing != null) {
             throw new AppException(ErrorCode.CONFLICT,
                     "A document with the same content already exists for this account");
         }
 
-        String relativePath = storage.store(bytes, sanitized);
-        Path storedPath = storage.resolve(relativePath);
+        UUID tempId = java.util.UUID.randomUUID();
+        var stored = storage.store(tempId, file.getInputStream());
+        String storagePath = stored.storagePath();
 
-        Document document = new Document();
-        document.setOwnerId(user.id());
-        document.setFilename(sanitized);
-        document.setContentType(contentType != null ? contentType : "application/pdf");
-        document.setSizeBytes(file.getSize());
-        document.setSha256(sha256);
-        document.setStoragePath(storedPath.toAbsolutePath().toString());
-        document.setStatus(DocumentStatus.UPLOADING);
+        Document document = Document.create(java.util.UUID.randomUUID(), user.userId(), sanitized,
+                contentType != null ? contentType : "application/pdf", stored.sizeBytes(), stored.sha256(),
+                storagePath);
         documentRepository.save(document);
 
         log.info("Uploaded document id={} owner={} filename={} size={}B",
-                document.getId(), user.id(), sanitized, document.getSizeBytes());
+                document.getId(), user.userId(), sanitized, document.getSizeBytes());
 
         return new UploadResponse(document.getId(), document.getFilename(), document.getStatus().name(),
                 document.getSizeBytes());
@@ -122,7 +116,8 @@ public class DocumentService {
 
     @Transactional(readOnly = true)
     public java.util.List<DocumentListItem> list(AuthenticatedUser user) {
-        return documentRepository.findByOwnerIdOrderByCreatedAtDesc(user.id())
+        return documentRepository.findByOwnerIdAndStatusNot(user.userId(), DocumentStatus.DELETED,
+                        org.springframework.data.domain.PageRequest.of(0, 1000, org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "createdAt")))
                 .stream()
                 .map(d -> new DocumentListItem(d.getId(), d.getFilename(), d.getStatus().name(),
                         d.getPageCount(), d.getChunkCount(), d.getCreatedAt()))
@@ -131,10 +126,11 @@ public class DocumentService {
 
     @Transactional(readOnly = true)
     public DocumentStatusResponse status(AuthenticatedUser user, UUID id) {
-        Document document = documentRepository.findByIdAndOwnerId(id, user.id())
+        Document document = documentRepository.findByIdAndOwnerId(id, user.userId())
                 .orElseThrow(() -> new AppException(ErrorCode.NOT_FOUND, "Document not found"));
         return new DocumentStatusResponse(document.getId(), document.getStatus().name(),
-                document.getProcessingStage(), document.getProcessingError(),
+                document.getProcessingStage() != null ? document.getProcessingStage().name() : null,
+                document.getProcessingError(),
                 document.getPageCount(), document.getChunkCount());
     }
 }
