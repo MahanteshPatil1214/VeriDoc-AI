@@ -78,9 +78,8 @@ public class DocumentProcessor {
 
     @Async("taskExecutor")
     public void process(UUID documentId) {
-        Document document = documentRepository.findById(documentId)
-                .orElseThrow(() -> new AppException(ErrorCode.NOT_FOUND, "Document not found"));
         try {
+            Document document = load(documentId);
             document.requireNotDeleted();
 
             document.markProcessing(DocumentStatus.EXTRACTING);
@@ -89,6 +88,7 @@ public class DocumentProcessor {
             byte[] pdf = storage.read(document.getStoragePath());
             List<PdfExtractor.PageText> pages = pdfExtractor.extract(pdf);
 
+            document = load(documentId);
             document.markProcessing(DocumentStatus.CHUNKING);
             documentRepository.save(document);
             var chunks = tokenChunker.chunk(pages);
@@ -103,6 +103,7 @@ public class DocumentProcessor {
             version.setChunkCount(chunks.size());
             documentVersionRepository.save(version);
 
+            document = load(documentId);
             document.markProcessing(DocumentStatus.EMBEDDING);
             documentRepository.save(document);
 
@@ -114,6 +115,7 @@ public class DocumentProcessor {
                 throw new AppException(ErrorCode.DOCUMENT_PROCESSING_FAILED, "Embedding count mismatch");
             }
 
+            document = load(documentId);
             document.markProcessing(DocumentStatus.INDEXING);
             documentRepository.save(document);
 
@@ -139,25 +141,39 @@ public class DocumentProcessor {
             }
             pgVectorChunkRepository.insertWithEmbeddings(storedChunks, vectors);
 
+            document = load(documentId);
             document.markReady(pages.size(), chunks.size());
             documentRepository.save(document);
             log.info("Document {} processed: {} pages, {} chunks", document.getId(), pages.size(), chunks.size());
         } catch (AppException e) {
-            fail(document, e.getMessage());
+            fail(documentId, e.getMessage());
         } catch (IOException e) {
-            fail(document, "Failed to read stored PDF: " + e.getMessage());
+            fail(documentId, "Failed to read stored PDF: " + e.getMessage());
         } catch (Exception e) {
             log.error("Unexpected error processing document {}", documentId, e);
-            fail(document, "Unexpected processing error");
+            fail(documentId, "Unexpected processing error");
         }
     }
 
-    private void fail(Document document, String message) {
+    /**
+     * Loads a fresh entity for a state mutation. The processing pipeline uses
+     * short, per-step transactions (embedding calls can take a long time), so a
+     * previously loaded instance is detached by the time it is saved again;
+     * re-saving it would fail optimistic locking. Reloading keeps each save a
+     * single, valid version bump.
+     */
+    private Document load(UUID documentId) {
+        return documentRepository.findById(documentId)
+                .orElseThrow(() -> new AppException(ErrorCode.NOT_FOUND, "Document not found"));
+    }
+
+    private void fail(UUID documentId, String message) {
         try {
+            Document document = load(documentId);
             document.markFailed(message);
             documentRepository.save(document);
         } catch (Exception ex) {
-            log.error("Failed to persist failure state for document {}", document.getId(), ex);
+            log.error("Failed to persist failure state for document {}", documentId, ex);
         }
     }
 }

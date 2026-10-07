@@ -114,10 +114,30 @@ public class DocumentService {
         log.info("Uploaded document id={} owner={} filename={} size={}B",
                 document.getId(), user.userId(), sanitized, document.getSizeBytes());
 
-        documentProcessor.process(document.getId());
+        triggerProcessingAfterCommit(document.getId());
 
         return new UploadResponse(document.getId(), document.getFilename(), document.getStatus().name(),
                 document.getSizeBytes());
+    }
+
+    /**
+     * Hands the document to the asynchronous pipeline only once the upload
+     * transaction has committed. Starting the worker before commit would race
+     * the row's visibility and could leave the document stuck in UPLOADING.
+     */
+    private void triggerProcessingAfterCommit(UUID documentId) {
+        if (org.springframework.transaction.support.TransactionSynchronizationManager
+                .isSynchronizationActive()) {
+            org.springframework.transaction.support.TransactionSynchronizationManager
+                    .registerSynchronization(new org.springframework.transaction.support.TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            documentProcessor.process(documentId);
+                        }
+                    });
+        } else {
+            documentProcessor.process(documentId);
+        }
     }
 
     @Transactional(readOnly = true)
