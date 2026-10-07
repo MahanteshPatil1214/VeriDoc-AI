@@ -42,12 +42,16 @@ public class DocumentService {
     private final StorageProperties storageProperties;
 
 
+    private final com.veridoc.ai.document.ingestion.processing.DocumentProcessor documentProcessor;
+
     public DocumentService(DocumentRepository documentRepository,
                            LocalDocumentStorage storage,
-                           StorageProperties storageProperties) {
+                           StorageProperties storageProperties,
+                           com.veridoc.ai.document.ingestion.processing.DocumentProcessor documentProcessor) {
         this.documentRepository = documentRepository;
         this.storage = storage;
         this.storageProperties = storageProperties;
+        this.documentProcessor = documentProcessor;
     }
 
     /**
@@ -109,6 +113,8 @@ public class DocumentService {
 
         log.info("Uploaded document id={} owner={} filename={} size={}B",
                 document.getId(), user.userId(), sanitized, document.getSizeBytes());
+
+        documentProcessor.process(document.getId());
 
         return new UploadResponse(document.getId(), document.getFilename(), document.getStatus().name(),
                 document.getSizeBytes());

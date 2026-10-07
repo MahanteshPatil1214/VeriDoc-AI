@@ -12,7 +12,7 @@ import com.veridoc.ai.document.ingestion.pdf.PdfExtractor;
 class TokenChunkerTest {
 
     private final ChunkingProperties props = new ChunkingProperties(700, 100, 40);
-    private final TokenChunker chunker = new TokenChunker(props);
+    private final TokenChunkerBase chunker = new TokenChunkerBase(props);
 
     @Test
     void chunksSinglePageIntoCoherentPieces() {
