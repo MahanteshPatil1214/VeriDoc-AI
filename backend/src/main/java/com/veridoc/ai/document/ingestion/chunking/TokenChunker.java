@@ -63,38 +63,23 @@ public class TokenChunker {
         if (tokens < properties.minTokens()) {
             return;
         }
-        // Apply overlap: if not the first chunk on this call chain, overlap is
-        // handled by the caller's state in a real implementation. For this
-        // iteration we keep the simple greedy split; overlap can be refined
-        // without breaking the schema.
         chunks.add(new Chunk(content, pageNumber, chunkIndex, tokens, Hashing.sha256Hex(content)));
     }
 
     private List<String> splitBySentence(String text) {
         List<String> parts = new ArrayList<>();
-        int start = 0;
-        for (int i = 0; i < text.length(); i++) {
-            char c = text.charAt(i);
-            if (c == '.' || c == '!' || c == '?') {
-                int end = i + 1;
-                while (end < text.length() && Character.isWhitespace(text.charAt(end))) {
-                    end++;
-                }
-                String part = text.substring(start, Math.min(end, text.length())).trim();
-                if (!part.isBlank()) {
-                    parts.add(part);
-                }
-                start = end;
-                if (start >= text.length()) {
-                    break;
-                }
+        if (text.isBlank()) {
+            return parts;
+        }
+        String[] candidates = text.split("(?<=[.!?])\\s+|[\\r\\n]+");
+        for (String candidate : candidates) {
+            String trimmed = candidate.trim();
+            if (!trimmed.isBlank()) {
+                parts.add(trimmed);
             }
         }
-        if (start < text.length()) {
-            String part = text.substring(start).trim();
-            if (!part.isBlank()) {
-                parts.add(part);
-            }
+        if (parts.isEmpty()) {
+            parts.add(text.trim());
         }
         return parts;
     }
@@ -103,8 +88,6 @@ public class TokenChunker {
         if (text == null || text.isBlank()) {
             return 0;
         }
-        // Rough but deterministic: split on whitespace. The configured
-        // thresholds match this approximation for the intended PDF corpus.
         StringTokenizer st = new StringTokenizer(text);
         return st.countTokens();
     }

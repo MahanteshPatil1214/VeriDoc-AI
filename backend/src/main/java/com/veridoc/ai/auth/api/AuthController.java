@@ -55,8 +55,8 @@ public class AuthController {
 
     @GetMapping("/me")
     @Operation(summary = "Return the currently authenticated user")
-    public UserResponse me() {
+    public UserResponse me(@CurrentUser com.veridoc.ai.security.authenticated.AuthenticatedUser user) {
         // The user id comes from the validated token, never from the request.
-        return UserResponse.from(userService.requireById(CurrentUser.requireId()));
+        return UserResponse.from(userService.requireById(user.userId()));
     }
 }

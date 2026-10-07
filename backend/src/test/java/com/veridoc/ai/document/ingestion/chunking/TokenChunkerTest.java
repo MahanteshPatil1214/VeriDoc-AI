@@ -33,7 +33,12 @@ class TokenChunkerTest {
     void skipsEmptyPages() {
         List<PdfExtractor.PageText> pages = List.of(
                 new PdfExtractor.PageText(1, "   "),
-                new PdfExtractor.PageText(2, "Hello world. This is a small chunk for testing purposes. ")
+                new PdfExtractor.PageText(2, "Hello world. This is a small chunk for testing purposes. "
+                        + "Additional sentence to reach sufficient token count for chunking. "
+                        + "Another sentence ensures we exceed the minimum threshold. "
+                        + "Final sentence pushes tokens above forty for the test. "
+                        + "One more sentence adds enough tokens to be valid. "
+                        + "Yet another sentence makes it comfortably over forty tokens.")
         );
         var chunks = chunker.chunk(pages);
         assertThat(chunks).hasSize(1);

@@ -10,7 +10,7 @@ import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.stereotype.Component;
 
 import com.veridoc.ai.common.trace.TraceContext;
-import com.veridoc.ai.security.CurrentUser;
+import com.veridoc.ai.security.CurrentUserAccessor;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -28,7 +28,7 @@ public class JwtAuthenticationEntryPoint implements AuthenticationEntryPoint {
                          HttpServletResponse response,
                          AuthenticationException authException) throws IOException {
 
-        CurrentUser.bindToMdc();
+        CurrentUserAccessor.bindToMdc();
         String traceId = TraceContext.currentTraceId();
         response.setStatus(HttpStatus.UNAUTHORIZED.value());
         response.setContentType("application/json");
