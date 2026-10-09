@@ -2,7 +2,6 @@ package com.veridoc.ai.support;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Random;
 
 import org.springframework.ai.document.Document;
 import org.springframework.ai.embedding.Embedding;
@@ -11,12 +10,14 @@ import org.springframework.ai.embedding.EmbeddingRequest;
 import org.springframework.ai.embedding.EmbeddingResponse;
 
 /**
- * Deterministic {@link EmbeddingModel} for integration tests.
+ * Deterministic, word-overlap {@link EmbeddingModel} for integration tests.
  *
- * <p>Gemini is never contacted. Vectors are unit-normalised and derived from
- * the input text, so the same chunk always yields the same vector (needed for
- * reproducible ordering) while different chunks yield different vectors.
- * Dimensions match {@code veridoc.embedding.dimensions} (768).
+ * <p>Gemini is never contacted. The vector is a unit-normalised bag-of-words
+ * over the 768 configured dimensions, so two texts that share vocabulary end up
+ * with high cosine similarity while unrelated texts stay near zero. This is
+ * what lets tests assert the retrieval threshold behaves correctly (matched
+ * query retrieves evidence, unrelated query yields "no evidence") without any
+ * external service.
  */
 public class DeterministicEmbeddingModel implements EmbeddingModel {
 
@@ -44,13 +45,22 @@ public class DeterministicEmbeddingModel implements EmbeddingModel {
 
     private float[] vector(String text) {
         float[] v = new float[DIMENSIONS];
-        Random random = new Random(text == null ? 0L : text.hashCode());
-        double squaredNorm = 0.0;
-        for (int i = 0; i < v.length; i++) {
-            v[i] = (float) (random.nextDouble() * 2.0 - 1.0);
-            squaredNorm += (double) v[i] * v[i];
+        if (text == null || text.isBlank()) {
+            return v;
         }
-        double norm = Math.sqrt(squaredNorm);
+        String[] tokens = text.toLowerCase(java.util.Locale.ROOT).split("[^a-z0-9]+");
+        for (String token : tokens) {
+            if (token.isEmpty()) {
+                continue;
+            }
+            int dim = Math.floorMod(token.hashCode(), v.length);
+            v[dim] += 1.0f;
+        }
+        double norm = 0.0;
+        for (float f : v) {
+            norm += (double) f * f;
+        }
+        norm = Math.sqrt(norm);
         if (norm > 0.0) {
             for (int i = 0; i < v.length; i++) {
                 v[i] = (float) (v[i] / norm);

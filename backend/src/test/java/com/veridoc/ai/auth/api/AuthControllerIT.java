@@ -12,6 +12,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -19,6 +20,7 @@ import com.veridoc.ai.auth.api.dto.AuthDtos.LoginRequest;
 import com.veridoc.ai.auth.api.dto.AuthDtos.RegisterRequest;
 import com.veridoc.ai.common.error.ErrorCode;
 import com.veridoc.ai.support.AbstractPostgresIntegrationTest;
+import com.veridoc.ai.support.IngestionTestConfig;
 
 import tools.jackson.databind.ObjectMapper;
 
@@ -28,8 +30,13 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <p>Jackson 3 is used here, not Jackson 2: Spring Boot 4 auto-configures
  * {@code tools.jackson} only, so a Jackson 2 {@code ObjectMapper} is not a bean.
+ *
+ * <p>Shares the {@link IngestionTestConfig} import with the chat and upload ITs
+ * so the whole suite runs against a single Spring context and a single
+ * PostgreSQL container.
  */
 @AutoConfigureMockMvc
+@Import(IngestionTestConfig.class)
 class AuthControllerIT extends AbstractPostgresIntegrationTest {
 
     private static final String PASSWORD = "correct horse battery";

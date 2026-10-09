@@ -1,14 +1,11 @@
 package com.veridoc.ai.support;
 
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
 import com.veridoc.ai.VeriDocApplication;
@@ -25,9 +22,14 @@ import org.assertj.core.api.Assertions;
  *
  * <p>Gemini is never contacted: the tests that need generation stub the
  * chat/embedding clients explicitly.
+ *
+ * <p>The container follows the Testcontainers <em>singleton</em> pattern (started
+ * once in a static initializer, never annotated {@code @Container}). A
+ * {@code @Container} static field would be stopped after each IT class while the
+ * cached Spring context keeps the original JDBC port, so every suite after the
+ * first would talk to a dead port.
  */
 @SpringBootTest(classes = VeriDocApplication.class)
-@Testcontainers
 @ActiveProfiles("test")
 @Import(TestInfrastructureConfig.class)
 public abstract class AbstractPostgresIntegrationTest {
@@ -39,11 +41,14 @@ public abstract class AbstractPostgresIntegrationTest {
     protected static final DockerImageName POSTGRES_IMAGE =
             DockerImageName.parse("pgvector/pgvector:pg17");
 
-    @Container
     protected static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(POSTGRES_IMAGE)
             .withDatabaseName("veridoc")
             .withUsername("veridoc")
             .withPassword("veridoc");
+
+    static {
+        POSTGRES.start();
+    }
 
     @DynamicPropertySource
     static void registerProperties(DynamicPropertyRegistry registry) {

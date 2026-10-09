@@ -21,6 +21,11 @@ veridoc:
     enabled: false
   storage:
     root: ./target/test-storage
+  retrieval:
+    # DeterministicEmbeddingModel hashes words into 768 bins; the margin
+    # between a vocabulary-overlapping query (>=0.4) and a disjoint one (<0.05)
+    # is comfortable at 0.2.
+    min-score: 0.2
   rag:
     debug-enabled: true
 
