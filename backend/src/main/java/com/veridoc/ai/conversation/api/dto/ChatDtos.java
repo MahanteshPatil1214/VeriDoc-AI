@@ -83,4 +83,16 @@ public final class ChatDtos {
             List<CitationDto> citations
     ) {
     }
+
+    /** SSE {@code token} event: an incremental piece of the assistant answer. */
+    public record StreamToken(String text) {
+    }
+
+    /** SSE {@code citations} event: the sources the completed answer was grounded in. */
+    public record StreamCitations(List<CitationDto> citations) {
+    }
+
+    /** SSE {@code error} event: a controlled failure with a stable error code. */
+    public record StreamError(String code, String message) {
+    }
 }

@@ -12,6 +12,8 @@ import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.Prompt;
 
+import reactor.core.publisher.Flux;
+
 /**
  * Deterministic {@link ChatModel} for tests.
  *
@@ -39,6 +41,28 @@ public class DeterministicChatModel implements ChatModel {
             answer = "Based on the uploaded documents, I can confirm: " + truncate(passages.get(0));
         }
         return new ChatResponse(List.of(new Generation(new AssistantMessage(answer))));
+    }
+
+    /**
+     * Emits the same answer as {@link #call(Prompt)} but split into word-sized
+     * chunks, so streaming tests exercise real incremental accumulation rather
+     * than a single delivery.
+     */
+    @Override
+    public Flux<ChatResponse> stream(Prompt prompt) {
+        ChatResponse full = call(prompt);
+        String text = full.getResult() == null || full.getResult().getOutput() == null
+                ? "" : full.getResult().getOutput().getText();
+        if (text == null || text.isEmpty()) {
+            return Flux.just(full);
+        }
+        List<ChatResponse> chunks = new ArrayList<>();
+        for (String piece : text.split("(?<=\\s)")) {
+            if (!piece.isEmpty()) {
+                chunks.add(new ChatResponse(List.of(new Generation(new AssistantMessage(piece)))));
+            }
+        }
+        return Flux.fromIterable(chunks);
     }
 
     private List<String> extractPassages(String system) {
