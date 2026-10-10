@@ -2,6 +2,7 @@ package com.veridoc.ai.rag;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
@@ -29,6 +30,19 @@ public class GroundedPromptBuilder {
 
     private static final String EVIDENCE_OPEN = "<evidence n=\"%d\" doc=\"%s\" chunk=\"%s\">";
     private static final String EVIDENCE_CLOSE = "</evidence>";
+
+    /**
+     * Neutralises any {@code <evidence>} / {@code </evidence>} tag a document may
+     * contain so that untrusted text can never close the block it is quoted
+     * within and inject a phantom passage or a fake instruction turn. Matching is
+     * case-insensitive because the tag name is not magic to the model.
+     */
+    private static final Pattern EVIDENCE_TAG =
+            Pattern.compile("<(/?evidence)", Pattern.CASE_INSENSITIVE);
+
+    /** C0 control characters other than tab/newline/carriage-return. */
+    private static final Pattern CONTROL_CHARS =
+            Pattern.compile("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]");
 
     private final RagProperties properties;
 
@@ -68,7 +82,7 @@ public class GroundedPromptBuilder {
             if (chunk.section() != null && !chunk.section().isBlank()) {
                 system.append("Section: ").append(chunk.section()).append('\n');
             }
-            system.append(chunk.content()).append('\n')
+            system.append(sanitizeEvidenceText(chunk.content())).append('\n')
                     .append(EVIDENCE_CLOSE).append('\n');
         }
 
@@ -78,5 +92,20 @@ public class GroundedPromptBuilder {
         messages.add(new UserMessage(question));
 
         return new PromptBundle(new Prompt(messages), evidence);
+    }
+
+    /**
+     * Prepares untrusted document text for embedding inside the system prompt.
+     * The evidence wrappers added by this builder are the only ones allowed:
+     * any tag a chunk tries to smuggle in is HTML-escaped so it can be quoted as
+     * plain text rather than parsed as structure. C0 control characters are
+     * stripped as a second line of defense.
+     */
+    private static String sanitizeEvidenceText(String content) {
+        if (content == null) {
+            return "";
+        }
+        String cleaned = CONTROL_CHARS.matcher(content).replaceAll("");
+        return EVIDENCE_TAG.matcher(cleaned).replaceAll("&lt;$1");
     }
 }

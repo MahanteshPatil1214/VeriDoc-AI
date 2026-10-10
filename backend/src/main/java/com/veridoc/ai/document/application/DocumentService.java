@@ -15,6 +15,7 @@ import com.veridoc.ai.common.error.AppException;
 import com.veridoc.ai.common.error.ErrorCode;
 import com.veridoc.ai.common.security.FileNameSanitizer;
 import com.veridoc.ai.common.security.Hashing;
+import com.veridoc.ai.config.properties.RateLimitProperties;
 import com.veridoc.ai.config.properties.StorageProperties;
 import com.veridoc.ai.document.api.dto.DocumentDtos.DocumentListItem;
 import com.veridoc.ai.document.api.dto.DocumentDtos.DocumentStatusResponse;
@@ -41,16 +42,22 @@ public class DocumentService {
     private final LocalDocumentStorage storage;
     private final StorageProperties storageProperties;
 
+    private final com.veridoc.ai.security.RedisRateLimiter rateLimiter;
+    private final RateLimitProperties rateLimitProperties;
 
     private final com.veridoc.ai.document.ingestion.processing.DocumentProcessor documentProcessor;
 
     public DocumentService(DocumentRepository documentRepository,
                            LocalDocumentStorage storage,
                            StorageProperties storageProperties,
+                           com.veridoc.ai.security.RedisRateLimiter rateLimiter,
+                           RateLimitProperties rateLimitProperties,
                            com.veridoc.ai.document.ingestion.processing.DocumentProcessor documentProcessor) {
         this.documentRepository = documentRepository;
         this.storage = storage;
         this.storageProperties = storageProperties;
+        this.rateLimiter = rateLimiter;
+        this.rateLimitProperties = rateLimitProperties;
         this.documentProcessor = documentProcessor;
     }
 
@@ -82,15 +89,25 @@ public class DocumentService {
         String contentType = file.getContentType();
         if (contentType != null && !contentType.equalsIgnoreCase("application/pdf")
                 && !contentType.equalsIgnoreCase("application/x-pdf")) {
-            // Do not blindly trust the client-provided content-type; PDFBox will
-            // validate the bytes during extraction. For now we warn, but allow
-            // the upload to proceed so extraction can fail with a precise error.
+            // Do not blindly trust the client-provided content-type; the magic
+            // byte check below is authoritative. We only warn here so a missing
+            // or sloppy content-type never blocks a valid PDF.
             log.debug("Unusual content-type '{}' for upload by user {}", contentType, user.userId());
         }
+
+        rateLimiter.check("upload", user.userId().toString(), rateLimitProperties.upload());
 
         byte[] bytes;
         try (InputStream in = file.getInputStream()) {
             bytes = in.readAllBytes();
+        }
+
+        // The client-provided content-type is untrusted, so the bytes themselves
+        // must carry the PDF marker. Fail fast instead of handing a would-be PDF
+        // (or an HTML/JS masquerade) to the async extractor and 201-ing a fraud.
+        if (!startsWithPdfMarker(bytes)) {
+            throw new AppException(ErrorCode.INVALID_PDF,
+                    "File content is not a PDF. Only PDF uploads are supported.");
         }
 
         String sha256 = Hashing.sha256Hex(bytes);
@@ -158,5 +175,26 @@ public class DocumentService {
                 document.getProcessingStage() != null ? document.getProcessingStage().name() : null,
                 document.getProcessingError(),
                 document.getPageCount(), document.getChunkCount());
+    }
+
+    /**
+     * A PDF must begin with the {@code %PDF-} header. The check tolerates leading
+     * whitespace and any PDF version tag, matching PDFBox's own tolerance while
+     * staying cheap enough for a synchronous upload path.
+     */
+    private static boolean startsWithPdfMarker(byte[] bytes) {
+        int scan = Math.min(bytes.length, 1024);
+        for (int i = 0; i < scan; i++) {
+            byte b = bytes[i];
+            if (b == '%') {
+                return scan - i >= 5
+                        && bytes[i + 1] == 'P' && bytes[i + 2] == 'D' && bytes[i + 3] == 'F'
+                        && bytes[i + 4] == '-';
+            }
+            if (!Character.isWhitespace(b)) {
+                return false;
+            }
+        }
+        return false;
     }
 }

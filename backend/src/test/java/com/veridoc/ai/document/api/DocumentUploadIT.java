@@ -84,13 +84,15 @@ class DocumentUploadIT extends AbstractPostgresIntegrationTest {
     }
 
     @Test
-    @DisplayName("a corrupt PDF ends in FAILED with an error message")
+    @DisplayName("a PDF that starts with the magic header but is structurally corrupt ends in FAILED")
     void corruptPdfFails() throws Exception {
         String token = tokenForNewUser();
 
+        // Magic bytes pass the synchronous gate; the async extractor then fails.
+        byte[] corrupt = "%PDF-1.7\n%%EOF".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+
         String body = mockMvc.perform(multipart("/api/v1/documents")
-                        .file(new MockMultipartFile("file", "broken.pdf", "application/pdf",
-                                "this is not a pdf".getBytes(java.nio.charset.StandardCharsets.UTF_8)))
+                        .file(new MockMultipartFile("file", "broken.pdf", "application/pdf", corrupt))
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();

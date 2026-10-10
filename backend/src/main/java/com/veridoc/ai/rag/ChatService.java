@@ -25,6 +25,7 @@ import com.veridoc.ai.common.error.AppException;
 import com.veridoc.ai.common.error.ErrorCode;
 import com.veridoc.ai.config.properties.AiProperties;
 import com.veridoc.ai.config.properties.RagProperties;
+import com.veridoc.ai.config.properties.RateLimitProperties;
 import com.veridoc.ai.conversation.api.dto.ChatDtos.ChatResponseDto;
 import com.veridoc.ai.conversation.api.dto.ChatDtos.CitationDto;
 import com.veridoc.ai.conversation.api.dto.ChatDtos.MessageDto;
@@ -56,9 +57,11 @@ public class ChatService {
     private final CitationRepository citationRepository;
     private final RetrievalService retrievalService;
     private final GroundedPromptBuilder promptBuilder;
-    private final ChatModel chatModel;
+private final ChatModel chatModel;
     private final RagProperties ragProperties;
     private final AiProperties aiProperties;
+    private final com.veridoc.ai.security.RedisRateLimiter rateLimiter;
+    private final RateLimitProperties rateLimitProperties;
 
     public ChatService(ConversationRepository conversationRepository,
                        MessageRepository messageRepository,
@@ -67,7 +70,9 @@ public class ChatService {
                        GroundedPromptBuilder promptBuilder,
                        ChatModel chatModel,
                        RagProperties ragProperties,
-                       AiProperties aiProperties) {
+                       AiProperties aiProperties,
+                       com.veridoc.ai.security.RedisRateLimiter rateLimiter,
+                       RateLimitProperties rateLimitProperties) {
         this.conversationRepository = conversationRepository;
         this.messageRepository = messageRepository;
         this.citationRepository = citationRepository;
@@ -76,9 +81,12 @@ public class ChatService {
         this.chatModel = chatModel;
         this.ragProperties = ragProperties;
         this.aiProperties = aiProperties;
+        this.rateLimiter = rateLimiter;
+        this.rateLimitProperties = rateLimitProperties;
     }
 
     public ChatResponseDto ask(AuthenticatedUser user, UUID conversationId, String question) {
+        checkChatBudget(user);
         Conversation conversation = requireConversation(user, conversationId);
         autoTitle(conversation, question);
 
@@ -115,12 +123,13 @@ public class ChatService {
      * once — on completion, on provider error, or on client disconnect
      * respectively. A partially streamed answer is still persisted.
      */
-    public Flux<ServerSentEvent<Object>> stream(AuthenticatedUser user,
+public Flux<ServerSentEvent<Object>> stream(AuthenticatedUser user,
                                                 UUID conversationId,
                                                 String question) {
         if (question == null || question.isBlank()) {
             throw new AppException(ErrorCode.INVALID_REQUEST, "message must not be blank");
         }
+        checkChatBudget(user);
         Conversation conversation = requireConversation(user, conversationId);
         autoTitle(conversation, question);
 
@@ -177,11 +186,15 @@ public class ChatService {
                         "Conversation not found"));
     }
 
-    private void autoTitle(Conversation conversation, String question) {
+private void autoTitle(Conversation conversation, String question) {
         if (conversation.getTitle().equals("New chat")) {
             conversation.autoTitleFrom(question);
             conversationRepository.save(conversation);
         }
+    }
+
+    private void checkChatBudget(AuthenticatedUser user) {
+        rateLimiter.check("chat", user.userId().toString(), rateLimitProperties.chat());
     }
 
     private Message generate(UUID conversationId, String question,

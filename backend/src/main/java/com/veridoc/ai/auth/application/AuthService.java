@@ -12,6 +12,8 @@ import com.veridoc.ai.auth.api.dto.AuthDtos.LoginRequest;
 import com.veridoc.ai.auth.api.dto.AuthDtos.RefreshRequest;
 import com.veridoc.ai.auth.api.dto.AuthDtos.RegisterRequest;
 import com.veridoc.ai.common.trace.TraceContext;
+import com.veridoc.ai.config.properties.RateLimitProperties;
+import com.veridoc.ai.security.RedisRateLimiter;
 import com.veridoc.ai.security.authenticated.AuthenticatedUser;
 import com.veridoc.ai.security.jwt.JwtTokenService;
 import com.veridoc.ai.user.api.dto.UserResponse;
@@ -34,10 +36,17 @@ public class AuthService {
 
     private final UserService userService;
     private final JwtTokenService tokenService;
+    private final RedisRateLimiter rateLimiter;
+    private final RateLimitProperties rateLimitProperties;
 
-    public AuthService(UserService userService, JwtTokenService tokenService) {
+    public AuthService(UserService userService,
+                       JwtTokenService tokenService,
+                       RedisRateLimiter rateLimiter,
+                       RateLimitProperties rateLimitProperties) {
         this.userService = userService;
         this.tokenService = tokenService;
+        this.rateLimiter = rateLimiter;
+        this.rateLimitProperties = rateLimitProperties;
     }
 
     @Transactional
@@ -50,6 +59,9 @@ public class AuthService {
     @Transactional(readOnly = true)
     public AuthResponse login(LoginRequest request) {
         long startNanos = System.nanoTime();
+        // Per-account bucket: throttles credential stuffing against one account
+        // without a legitimate client hammering unrelated users' emails.
+        rateLimiter.check("login", request.email(), rateLimitProperties.login());
         User user = userService.authenticate(request.email(), request.password());
         log.info("Login succeeded userId={} durationMs={} traceId={}",
                 user.getId(),
