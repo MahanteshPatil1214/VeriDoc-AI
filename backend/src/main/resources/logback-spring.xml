@@ -3,6 +3,8 @@
     <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
 
     <springProperty scope="context" name="applicationName" source="spring.application.name"/>
+    <!-- LOG_FORMAT=json switches to the structured encoder; anything else is console. -->
+    <springProperty scope="context" name="logFormat" source="LOG_FORMAT" defaultValue="console"/>
 
     <!-- Human readable console output with correlation IDs in the MDC. -->
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
@@ -12,7 +14,7 @@
         </encoder>
     </appender>
 
-    <!-- Structured JSON for log aggregation. Activated with LOG_FORMAT=json. -->
+    <!-- Structured JSON for log aggregation. -->
     <appender name="JSON" class="ch.qos.logback.core.ConsoleAppender">
         <encoder class="net.logstash.logback.encoder.LogstashEncoder">
             <customFields>{"service":"veridoc-ai-backend"}</customFields>
@@ -21,21 +23,25 @@
         </encoder>
     </appender>
 
-    <springProfile name="!json">
-        <root level="INFO">
-            <appender-ref ref="CONSOLE"/>
-        </root>
-    </springProfile>
-
-    <springProfile name="json">
-        <root level="INFO">
-            <appender-ref ref="JSON"/>
-        </root>
-    </springProfile>
-
+    <!-- Production defaults to WARN + JSON regardless of LOG_FORMAT. -->
     <springProfile name="prod">
         <root level="WARN">
             <appender-ref ref="JSON"/>
         </root>
+    </springProfile>
+
+    <springProfile name="!prod">
+        <if condition='property("logFormat").equals("json")'>
+            <then>
+                <root level="INFO">
+                    <appender-ref ref="JSON"/>
+                </root>
+            </then>
+            <else>
+                <root level="INFO">
+                    <appender-ref ref="CONSOLE"/>
+                </root>
+            </else>
+        </if>
     </springProfile>
 </configuration>

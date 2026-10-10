@@ -40,6 +40,8 @@ import com.veridoc.ai.message.domain.MessageRole;
 import com.veridoc.ai.message.persistence.MessageRepository;
 import com.veridoc.ai.security.authenticated.AuthenticatedUser;
 
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import reactor.core.publisher.Flux;
 
 /**
@@ -52,16 +54,17 @@ public class ChatService {
 
     private static final Logger log = LoggerFactory.getLogger(ChatService.class);
 
-    private final ConversationRepository conversationRepository;
+private final ConversationRepository conversationRepository;
     private final MessageRepository messageRepository;
     private final CitationRepository citationRepository;
     private final RetrievalService retrievalService;
     private final GroundedPromptBuilder promptBuilder;
-private final ChatModel chatModel;
+    private final ChatModel chatModel;
     private final RagProperties ragProperties;
     private final AiProperties aiProperties;
     private final com.veridoc.ai.security.RedisRateLimiter rateLimiter;
     private final RateLimitProperties rateLimitProperties;
+    private final MeterRegistry meterRegistry;
 
     public ChatService(ConversationRepository conversationRepository,
                        MessageRepository messageRepository,
@@ -72,7 +75,8 @@ private final ChatModel chatModel;
                        RagProperties ragProperties,
                        AiProperties aiProperties,
                        com.veridoc.ai.security.RedisRateLimiter rateLimiter,
-                       RateLimitProperties rateLimitProperties) {
+                       RateLimitProperties rateLimitProperties,
+                       MeterRegistry meterRegistry) {
         this.conversationRepository = conversationRepository;
         this.messageRepository = messageRepository;
         this.citationRepository = citationRepository;
@@ -83,6 +87,7 @@ private final ChatModel chatModel;
         this.aiProperties = aiProperties;
         this.rateLimiter = rateLimiter;
         this.rateLimitProperties = rateLimitProperties;
+        this.meterRegistry = meterRegistry;
     }
 
     public ChatResponseDto ask(AuthenticatedUser user, UUID conversationId, String question) {
@@ -92,21 +97,23 @@ private final ChatModel chatModel;
 
         List<org.springframework.ai.chat.messages.Message> history = history(conversationId);
 
-        Message userMessage = Message.user(UUID.randomUUID(), conversationId, question);
+Message userMessage = Message.user(UUID.randomUUID(), conversationId, question);
         messageRepository.save(userMessage);
 
-        List<RetrievedChunkRow> evidence =
-                retrievalService.retrieve(user.userId(), conversationId, question);
+        List<RetrievedChunkRow> evidence = retrieve(user.userId(), conversationId, question);
 
         Instant started = Instant.now();
         Message assistant;
         List<CitationDto> citationDtos;
         if (evidence.isEmpty()) {
+            meterRegistry.counter("veridoc.rag.refusals").increment();
             assistant = completeAssistant(conversationId, null, ragProperties.noEvidenceAnswer(),
                     null, null, 0L);
             messageRepository.save(assistant);
             citationDtos = List.of();
         } else {
+            debugEvidence(question, evidence);
+            meterRegistry.counter("veridoc.rag.citations").increment(evidence.size());
             assistant = generate(conversationId, question, evidence, history, started);
             citationDtos = persistCitations(assistant.getId(), evidence);
         }
@@ -136,10 +143,10 @@ public Flux<ServerSentEvent<Object>> stream(AuthenticatedUser user,
         List<org.springframework.ai.chat.messages.Message> history = history(conversationId);
         messageRepository.save(Message.user(UUID.randomUUID(), conversationId, question));
 
-        List<RetrievedChunkRow> evidence =
-                retrievalService.retrieve(user.userId(), conversationId, question);
+List<RetrievedChunkRow> evidence = retrieve(user.userId(), conversationId, question);
 
         if (evidence.isEmpty()) {
+            meterRegistry.counter("veridoc.rag.refusals").increment();
             Message assistant = completeAssistant(conversationId, null,
                     ragProperties.noEvidenceAnswer(), null, null, 0L);
             messageRepository.save(assistant);
@@ -149,6 +156,8 @@ public Flux<ServerSentEvent<Object>> stream(AuthenticatedUser user,
                     sse("done", done));
         }
 
+        debugEvidence(question, evidence);
+        meterRegistry.counter("veridoc.rag.citations").increment(evidence.size());
         GroundedPromptBuilder.PromptBundle bundle =
                 promptBuilder.build(question, evidence, history);
         Instant started = Instant.now();
@@ -180,10 +189,44 @@ public Flux<ServerSentEvent<Object>> stream(AuthenticatedUser user,
                 .toList();
     }
 
-    private Conversation requireConversation(AuthenticatedUser user, UUID conversationId) {
+private Conversation requireConversation(AuthenticatedUser user, UUID conversationId) {
         return conversationRepository.findByIdAndOwnerId(conversationId, user.userId())
                 .orElseThrow(() -> new AppException(ErrorCode.CONVERSATION_NOT_FOUND,
                         "Conversation not found"));
+    }
+
+    /** Retrieval timed into {@code veridoc.rag.retrieval}, regardless of outcome. */
+    private List<RetrievedChunkRow> retrieve(UUID ownerId, UUID conversationId, String question) {
+        Timer.Sample sample = Timer.start(meterRegistry);
+        try {
+            return retrievalService.retrieve(ownerId, conversationId, question);
+        } finally {
+            sample.stop(meterRegistry.timer("veridoc.rag.retrieval"));
+        }
+    }
+
+    /** With {@code veridoc.rag.debug-enabled=true}, log exactly what fed the model. */
+    private void debugEvidence(String question, List<RetrievedChunkRow> evidence) {
+        if (!ragProperties.debugEnabled()) {
+            return;
+        }
+        StringBuilder sb = new StringBuilder("RAG retrieved ").append(evidence.size())
+                .append(" passage(s) for \"").append(question).append("\":");
+        for (int i = 0; i < evidence.size(); i++) {
+            RetrievedChunkRow c = evidence.get(i);
+            sb.append("\n  [").append(i + 1).append("] score=").append(c.similarity())
+                    .append(" doc=").append(c.filename()).append(" chunk=").append(c.chunkId())
+                    .append(" section=").append(c.section())
+                    .append(" starts: ").append(abbreviate(c.content(), 120));
+        }
+        log.debug(sb.toString());
+    }
+
+    private static String abbreviate(String value, int max) {
+        if (value == null) {
+            return "";
+        }
+        return value.length() <= max ? value : value.substring(0, max - 3) + "...";
     }
 
 private void autoTitle(Conversation conversation, String question) {

@@ -23,6 +23,9 @@ import com.veridoc.ai.support.AbstractPostgresIntegrationTest;
 import com.veridoc.ai.support.IngestionTestConfig;
 import com.veridoc.ai.support.TestPdfs;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -45,6 +48,32 @@ class ChatRagIT extends AbstractPostgresIntegrationTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private MeterRegistry meterRegistry;
+
+    @Test
+    @DisplayName("RAG turns publish retrieval, refusal and citation metrics")
+    void ragPublishesTelemetry() throws Exception {
+        Counter citations = meterRegistry.counter("veridoc.rag.citations");
+        Counter refusals = meterRegistry.counter("veridoc.rag.refusals");
+        Timer retrieval = meterRegistry.timer("veridoc.rag.retrieval");
+        double citationsBefore = citations.count();
+        double refusalsBefore = refusals.count();
+        long retrievalsBefore = retrieval.count();
+
+        String token = tokenForNewUser();
+        UUID docId = uploadAndAwaitReady(token, "contract.pdf");
+        UUID conversationId = createConversation(token, "Telemetry");
+        attach(token, conversationId, docId);
+
+        ask(token, conversationId, GROUNDED_QUERY);
+        ask(token, conversationId, "Why do zebras cross rivers safely?");
+
+        assertThat(retrieval.count()).isGreaterThan(retrievalsBefore);
+        assertThat(citations.count()).isGreaterThan(citationsBefore);
+        assertThat(refusals.count()).isGreaterThan(refusalsBefore);
+    }
 
     @Test
     @DisplayName("a grounded question answers with text and citations from the attached document")

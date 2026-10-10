@@ -172,6 +172,11 @@
             <artifactId>logstash-logback-encoder</artifactId>
             <version>${logstash-encoder.version}</version>
         </dependency>
+        <!-- Observability: conditional logback <if> for LOG_FORMAT=json -->
+        <dependency>
+            <groupId>org.codehaus.janino</groupId>
+            <artifactId>janino</artifactId>
+        </dependency>
 
         <!-- ===================== TEST ===================== -->
         <dependency>
