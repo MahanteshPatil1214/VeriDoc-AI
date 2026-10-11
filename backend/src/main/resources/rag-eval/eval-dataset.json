@@ -1,0 +1,54 @@
+{
+  "name": "veridoc-core-eval",
+  "corpus": [
+    {
+      "filename": "handbook.pdf",
+      "text": "Vacation accrual employees policy leave balance request carryover holiday tenure payroll portal. Vacation accrual employees policy leave balance request carryover holiday tenure payroll portal. Vacation accrual employees policy leave balance request carryover holiday tenure payroll portal. Vacation accrual employees policy leave balance request carryover holiday tenure payroll portal."
+    },
+    {
+      "filename": "security.pdf",
+      "text": "Encryption authentication incident response vulnerability threshold cipher credential breach rotation firewall signature. Encryption authentication incident response vulnerability threshold cipher credential breach rotation firewall signature. Encryption authentication incident response vulnerability threshold cipher credential breach rotation firewall signature. Encryption authentication incident response vulnerability threshold cipher credential breach rotation firewall signature."
+    },
+    {
+      "filename": "shipping.pdf",
+      "text": "Freight pallet warehouse logistics carrier manifest consignment delivery customs dockyard shipment routing. Freight pallet warehouse logistics carrier manifest consignment delivery customs dockyard shipment routing. Freight pallet warehouse logistics carrier manifest consignment delivery customs dockyard shipment routing. Freight pallet warehouse logistics carrier manifest consignment delivery customs dockyard shipment routing."
+    }
+  ],
+  "cases": [
+    {
+      "id": "handbook-vacation",
+      "question": "vacation accrual employees leave balance",
+      "expectedDocument": "handbook.pdf",
+      "expectedKeywords": ["vacation", "accrual", "employees"],
+      "expectRefusal": false
+    },
+    {
+      "id": "security-encryption",
+      "question": "encryption authentication incident response vulnerability",
+      "expectedDocument": "security.pdf",
+      "expectedKeywords": ["encryption", "authentication", "vulnerability"],
+      "expectRefusal": false
+    },
+    {
+      "id": "shipping-freight",
+      "question": "freight pallet warehouse delivery manifest",
+      "expectedDocument": "shipping.pdf",
+      "expectedKeywords": ["freight", "pallet", "manifest"],
+      "expectRefusal": false
+    },
+    {
+      "id": "refusal-mercury",
+      "question": "boiling point of mercury",
+      "expectedDocument": null,
+      "expectedKeywords": [],
+      "expectRefusal": true
+    },
+    {
+      "id": "refusal-pizza",
+      "question": "best pizza place in town",
+      "expectedDocument": null,
+      "expectedKeywords": [],
+      "expectRefusal": true
+    }
+  ]
+}
