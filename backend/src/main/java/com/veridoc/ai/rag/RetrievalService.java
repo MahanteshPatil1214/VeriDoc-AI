@@ -59,6 +59,16 @@ public class RetrievalService {
      * and the chat layer can respond with the canonical "no evidence" answer.
      */
     public List<RetrievedChunkRow> retrieve(UUID ownerId, UUID conversationId, String query) {
+        return retrieve(ownerId, conversationId, query, true);
+    }
+
+    /**
+     * @param rewrite when {@code false}, {@code query} is embedded verbatim — used
+     *                by the RAG debugger to inspect retrieval under an already
+     *                rewritten query without rewriting a second time.
+     */
+    public List<RetrievedChunkRow> retrieve(UUID ownerId, UUID conversationId, String query,
+                                            boolean rewrite) {
         conversationRepository.findByIdAndOwnerId(conversationId, ownerId)
                 .orElseThrow(() -> new AppException(ErrorCode.CONVERSATION_NOT_FOUND,
                         "Conversation not found"));
@@ -68,7 +78,8 @@ public class RetrievalService {
             return List.of();
         }
 
-        double[] queryVector = embedQuery(queryRewriteService.rewrite(query));
+        String effectiveQuery = rewrite ? queryRewriteService.rewrite(query) : query;
+        double[] queryVector = embedQuery(effectiveQuery);
         List<RetrievedChunkRow> candidates = pgVectorChunkRepository.similaritySearch(
                 ownerId, documentIds, queryVector,
                 embeddingProperties.model(), embeddingProperties.version(),

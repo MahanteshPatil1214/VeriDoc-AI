@@ -26,9 +26,9 @@ import jakarta.servlet.http.HttpServletResponse;
 
 /**
  * Stateless JWT security. Everything under {@code /api/v1} requires
- * authentication except the auth endpoints and health probes; actuator
- * operational endpoints (metrics, prometheus, flyway, ...) are ADMIN-only.
- * Per-resource ownership is enforced in the service layer, not here.
+ * authentication except the auth endpoints and health probes; {@code /api/v1/admin/**}
+ * and the actuator operational endpoints (metrics, prometheus, flyway, ...) are
+ * ADMIN-only. Per-resource ownership is enforced in the service layer, not here.
  */
 @Configuration
 @EnableWebSecurity
@@ -83,6 +83,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers(PUBLIC_ENDPOINTS).permitAll()
+                        .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/v1/**").authenticated()
                         .requestMatchers("/actuator/**").hasRole("ADMIN")
                         .anyRequest().authenticated())
