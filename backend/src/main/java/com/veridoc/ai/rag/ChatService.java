@@ -112,10 +112,12 @@ Message userMessage = Message.user(UUID.randomUUID(), conversationId, question);
             messageRepository.save(assistant);
             citationDtos = List.of();
         } else {
-            debugEvidence(question, evidence);
-            meterRegistry.counter("veridoc.rag.citations").increment(evidence.size());
-            assistant = generate(conversationId, question, evidence, history, started);
-            citationDtos = persistCitations(assistant.getId(), evidence);
+            GroundedPromptBuilder.PromptBundle bundle =
+                    promptBuilder.build(question, evidence, history);
+            debugEvidence(question, bundle.evidence());
+            meterRegistry.counter("veridoc.rag.citations").increment(bundle.evidence().size());
+            assistant = generate(conversationId, bundle, started);
+            citationDtos = persistCitations(assistant.getId(), bundle.evidence());
         }
         return toResponse(assistant, citationDtos);
     }
@@ -156,10 +158,10 @@ List<RetrievedChunkRow> evidence = retrieve(user.userId(), conversationId, quest
                     sse("done", done));
         }
 
-        debugEvidence(question, evidence);
-        meterRegistry.counter("veridoc.rag.citations").increment(evidence.size());
-        GroundedPromptBuilder.PromptBundle bundle =
+GroundedPromptBuilder.PromptBundle bundle =
                 promptBuilder.build(question, evidence, history);
+        debugEvidence(question, bundle.evidence());
+        meterRegistry.counter("veridoc.rag.citations").increment(bundle.evidence().size());
         Instant started = Instant.now();
         Message assistant = Message.assistantStreaming(
                 UUID.randomUUID(), conversationId, aiProperties.chatModel());
@@ -175,7 +177,7 @@ List<RetrievedChunkRow> evidence = retrieve(user.userId(), conversationId, quest
                 .doOnNext(buffer::append)
                 .map(text -> sse("token", new StreamToken(text)))
                 .concatWith(Flux.defer(() -> completeStream(
-                        assistant, buffer.toString(), last.get(), evidence, started)))
+                        assistant, buffer.toString(), last.get(), bundle.evidence(), started)))
                 .onErrorResume(error -> failStream(assistant, buffer.toString(), error, started))
                 .doOnCancel(() -> cancelStream(assistant, buffer.toString(), started));
     }
@@ -240,13 +242,8 @@ private void autoTitle(Conversation conversation, String question) {
         rateLimiter.check("chat", user.userId().toString(), rateLimitProperties.chat());
     }
 
-    private Message generate(UUID conversationId, String question,
-                             List<RetrievedChunkRow> evidence,
-                             List<org.springframework.ai.chat.messages.Message> history,
-                             Instant started) {
-        GroundedPromptBuilder.PromptBundle bundle = promptBuilder.build(
-                question, evidence, history);
-
+private Message generate(UUID conversationId, GroundedPromptBuilder.PromptBundle bundle,
+                         Instant started) {
         ChatResponse response = chatModel.call(bundle.prompt());
         String answer = response.getResult().getOutput().getText();
         long latencyMs = Duration.between(started, Instant.now()).toMillis();
@@ -260,7 +257,8 @@ private void autoTitle(Conversation conversation, String question) {
         messageRepository.save(assistant);
 
         log.info("Assistant message {} for conversation {}: {} chars, {} evidence passages, {} ms",
-                assistant.getId(), conversationId, answer.length(), evidence.size(), latencyMs);
+                assistant.getId(), conversationId, answer.length(),
+                bundle.evidence().size(), latencyMs);
         return assistant;
     }
 

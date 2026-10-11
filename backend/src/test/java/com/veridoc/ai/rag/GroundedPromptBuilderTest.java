@@ -81,6 +81,39 @@ class GroundedPromptBuilderTest {
                 .hasMessageContaining("at least one evidence passage");
     }
 
+    @Test
+    void evidenceIsTrimmedToTheContextBudgetAndCitationsFollow() {
+        GroundedPromptBuilder capped = new GroundedPromptBuilder(new RagProperties(
+                8, 8, true, PROPERTIES.noEvidenceAnswer(), false));
+        RetrievedChunkRow one = chunk("alpha beta gamma");
+        RetrievedChunkRow two = chunk("delta epsilon zeta eta");
+        RetrievedChunkRow three = chunk("theta iota kappa lambda mu");
+        List<RetrievedChunkRow> all = List.of(one, two, three);
+
+        GroundedPromptBuilder.PromptBundle bundle =
+                capped.build("question", all, List.of());
+
+        // one (3) + two (4) = 7 fit the budget of 8; three (5) would exceed it.
+        String system = systemOf(bundle);
+        assertThat(bundle.evidence()).containsExactly(one, two);
+        assertThat(system).contains("alpha", "zeta").doesNotContain("theta", "mu");
+        assertThat(count("<evidence", system)).isEqualTo(2);
+    }
+
+    @Test
+    void firstPassageIsAlwaysKeptEvenWhenItExceedsTheBudget() {
+        GroundedPromptBuilder capped = new GroundedPromptBuilder(new RagProperties(
+                8, 2, true, PROPERTIES.noEvidenceAnswer(), false));
+        RetrievedChunkRow one = chunk("alpha beta gamma delta epsilon");
+        RetrievedChunkRow two = chunk("zeta eta");
+
+        GroundedPromptBuilder.PromptBundle bundle =
+                capped.build("question", List.of(one, two), List.of());
+
+        assertThat(bundle.evidence()).containsExactly(one);
+        assertThat(count("<evidence", systemOf(bundle))).isEqualTo(1);
+    }
+
     private static String systemOf(GroundedPromptBuilder.PromptBundle bundle) {
         Message first = bundle.prompt().getInstructions().get(0);
         assertThat(first).isInstanceOf(SystemMessage.class);

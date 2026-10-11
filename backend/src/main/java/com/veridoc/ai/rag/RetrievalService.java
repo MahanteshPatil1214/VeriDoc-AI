@@ -34,19 +34,22 @@ public class RetrievalService {
     private final EmbeddingModel embeddingModel;
     private final EmbeddingProperties embeddingProperties;
     private final RetrievalProperties retrievalProperties;
+    private final QueryRewriteService queryRewriteService;
 
     public RetrievalService(ConversationRepository conversationRepository,
                             ConversationDocumentRepository conversationDocumentRepository,
                             PgVectorChunkRepository pgVectorChunkRepository,
                             EmbeddingModel embeddingModel,
                             EmbeddingProperties embeddingProperties,
-                            RetrievalProperties retrievalProperties) {
+                            RetrievalProperties retrievalProperties,
+                            QueryRewriteService queryRewriteService) {
         this.conversationRepository = conversationRepository;
         this.conversationDocumentRepository = conversationDocumentRepository;
         this.pgVectorChunkRepository = pgVectorChunkRepository;
         this.embeddingModel = embeddingModel;
         this.embeddingProperties = embeddingProperties;
         this.retrievalProperties = retrievalProperties;
+        this.queryRewriteService = queryRewriteService;
     }
 
     /**
@@ -65,7 +68,7 @@ public class RetrievalService {
             return List.of();
         }
 
-        double[] queryVector = embedQuery(query);
+        double[] queryVector = embedQuery(queryRewriteService.rewrite(query));
         List<RetrievedChunkRow> candidates = pgVectorChunkRepository.similaritySearch(
                 ownerId, documentIds, queryVector,
                 embeddingProperties.model(), embeddingProperties.version(),

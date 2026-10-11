@@ -28,6 +28,10 @@ veridoc:
     min-score: 0.2
   rag:
     debug-enabled: true
+    # The deterministic chat stub answers with the passages themselves, which is
+    # useless as a retrieval query, so rewriting stays off unless a test
+    # explicitly turns it on (see QueryRewriteIT).
+    enable-query-rewriting: false
 
 logging:
   level:
