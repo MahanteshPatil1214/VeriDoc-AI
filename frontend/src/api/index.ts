@@ -14,6 +14,20 @@ export const api = new ApiClient({
 
 export { ApiClient } from './client'
 export { ApiError } from './types'
-export type { AuthResponse, LoginRequest, RegisterRequest, User, ApiProblem } from './types'
 export { authApi } from './auth'
+export { conversationsApi } from './conversations'
+export { chatApi } from './chat'
+export type {
+  AuthResponse,
+  LoginRequest,
+  RegisterRequest,
+  User,
+  ApiProblem,
+  Conversation,
+  ConversationListItem,
+  ConversationDocumentRef,
+  Message,
+  Citation,
+  ChatReply,
+} from './types'
 export const hasStoredRefreshToken = () => localStorage.getItem(REFRESH_TOKEN_KEY) !== null

@@ -32,6 +32,63 @@ export interface TokenProvider {
   getAccessToken: () => string | null
 }
 
+// ---- conversations ----
+
+export interface ConversationDocumentRef {
+  id: string
+  filename: string
+}
+
+export interface Conversation {
+  id: string
+  title: string
+  createdAt: string
+  updatedAt: string
+  documents: ConversationDocumentRef[]
+}
+
+export interface ConversationListItem {
+  id: string
+  title: string
+  updatedAt: string
+}
+
+// ---- messages / chat ----
+
+export interface Message {
+  id: string
+  role: string
+  content: string
+  status: string
+  createdAt: string
+}
+
+export interface Citation {
+  ordinal: number
+  documentId: string
+  documentFilename: string
+  chunkId: string
+  pageNumber: number | null
+  section: string | null
+  relevanceScore: number | null
+  quotedText: string
+}
+
+export interface ChatReply {
+  messageId: string
+  conversationId: string
+  role: string
+  content: string
+  status: string
+  model: string | null
+  promptTokens: number | null
+  completionTokens: number | null
+  totalTokens: number | null
+  latencyMs: number | null
+  createdAt: string
+  citations: Citation[]
+}
+
 /** Backend error envelope: { code, message } with a stable HTTP status. */
 export interface ApiProblem {
   code: string

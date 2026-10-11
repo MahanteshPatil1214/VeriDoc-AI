@@ -1,0 +1,50 @@
+.composer {
+  width: 100%;
+  max-width: var(--reading-width);
+  margin: 0 auto;
+  padding: 0 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.composer-box {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
+  padding: 10px 10px 10px 16px;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.composer-box:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-weak), var(--shadow-soft);
+}
+
+.composer-input {
+  flex: 1;
+  border: 0;
+  outline: none;
+  resize: none;
+  background: transparent;
+  padding: 6px 0;
+  max-height: 160px;
+  font-size: var(--text-md);
+  line-height: 1.5;
+}
+
+.composer-send {
+  border-radius: var(--radius-md);
+  padding: 9px 16px;
+}
+
+.composer-hint {
+  margin: 0;
+  text-align: center;
+  color: var(--muted-2);
+  font-size: var(--text-xs);
+}
