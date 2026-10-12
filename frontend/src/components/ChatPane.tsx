@@ -1,8 +1,8 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { api, ApiError, chatApi } from '../api'
-import type { ChatReply, Message } from '../api'
+import type { Message, StreamEvent } from '../api'
 import { useWorkspace } from '../chat/useWorkspace'
 import { Composer } from './Composer'
 import { MessageRow } from './Message'
@@ -28,70 +28,139 @@ function Thread({ conversationId }: { conversationId: string }) {
     queryFn: () => chatApi(api).messages(conversationId),
   })
 
-  // Optimistic/in-flight rows for the current turn. Cleared once the server
-  // acknowledges the reply and the cache is updated + invalidated.
+  /** Optimistic user row for the turn in flight. */
   const [pending, setPending] = useState<Message[]>([])
+  /** The assistant row being streamed (mirrored in {@link draftRef} for commit). */
+  const [draftAssistant, setDraftAssistant] = useState<Message | null>(null)
+  const draftRef = useRef<Message | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const pendingTemp = useRef<Message | null>(null)
+  const controllerRef = useRef<AbortController | null>(null)
 
-  const messages = useMemo(() => [...serverMessages, ...pending], [serverMessages, pending])
+  const messages = useMemo(
+    () => [...serverMessages, ...pending, ...(draftAssistant ? [draftAssistant] : [])],
+    [serverMessages, pending, draftAssistant],
+  )
+  const busy = draftAssistant !== null
 
-  const askMutation = useMutation({
-    mutationFn: (message: string) => chatApi(api).ask(conversationId, message),
-    onSuccess: (reply: ChatReply) => {
-      // Keep the optimistic user message visible and append the reply immediately;
-      // the invalidated refetch then reconciles with the server's rows.
-      const optimisticUser = pendingTemp.current
-      queryClient.setQueryData<Message[]>(['messages', conversationId], (previous) => {
-        const base = previous ?? []
-        const existingUser = optimisticUser
-          ? base.find((m) => m.id === optimisticUser.id)
-          : undefined
-        if (existingUser) return [...base, assistantFromReply(reply)]
-        const rows = optimisticUser ? [...base, { ...optimisticUser, status: 'COMPLETE' }] : [...base]
-        return [...rows, assistantFromReply(reply)]
-      })
-      setPending([])
-      pendingTemp.current = null
-      setError(null)
-      void queryClient.invalidateQueries({ queryKey: ['messages', conversationId] })
-      void queryClient.invalidateQueries({ queryKey: ['conversations'] })
-    },
-    onError: (err: unknown) => {
-      setPending([])
-      pendingTemp.current = null
-      setError(err instanceof ApiError ? err.message : 'Something went wrong. Please try again.')
-    },
-  })
+  const updateDraft = (patch: Partial<Message>) => {
+    if (!draftRef.current) return
+    draftRef.current = { ...draftRef.current, ...patch }
+    setDraftAssistant({ ...draftRef.current })
+  }
 
-  const busy = askMutation.isPending
+  const startDraft = (initial: Message) => {
+    draftRef.current = initial
+    setDraftAssistant(initial)
+  }
 
-  const send = (text: string) => {
+  /** Push the finished user + assistant rows into the cached thread, then reconcile. */
+  const commitTurn = (userTemp: Message, assistant: Message) => {
+    queryClient.setQueryData<Message[]>(['messages', conversationId], (previous) => [
+      ...(previous ?? []),
+      { ...userTemp, status: 'COMPLETE' },
+      assistant,
+    ])
+    setPending([])
+    draftRef.current = null
+    setDraftAssistant(null)
+    void queryClient.invalidateQueries({ queryKey: ['messages', conversationId] })
+    void queryClient.invalidateQueries({ queryKey: ['conversations'] })
+  }
+
+  // Abort an in-flight stream if the thread unmounts (e.g. switching chats).
+  useEffect(() => {
+    controllerRef.current = null
+    return () => {
+      controllerRef.current?.abort()
+    }
+  }, [conversationId])
+
+  const send = async (text: string) => {
     setError(null)
-    const temp: Message = {
+    const controller = new AbortController()
+    controllerRef.current = controller
+
+    const userTemp: Message = {
       id: crypto.randomUUID(),
       role: 'USER',
       content: text,
       status: 'SENDING',
       createdAt: new Date().toISOString(),
     }
-    pendingTemp.current = temp
-    setPending([temp])
-    askMutation.mutate(text)
+    setPending([userTemp])
+    startDraft({
+      id: crypto.randomUUID(),
+      role: 'ASSISTANT',
+      content: '',
+      status: 'STREAMING',
+      createdAt: new Date().toISOString(),
+      citations: [],
+    })
+
+    try {
+      const events = chatApi(api).streamAssistant(conversationId, text, controller.signal)
+      for await (const event of events) {
+        handleEvent(event)
+      }
+    } catch (err) {
+      if (controller.signal.aborted) {
+        updateDraft({ status: 'CANCELLED' })
+      } else {
+        updateDraft({ status: 'FAILED' })
+        setError(err instanceof ApiError ? err.message : 'The answer could not be generated.')
+      }
+    } finally {
+      const assistant = draftRef.current
+      if (assistant && assistant.content.length === 0 && assistant.status === 'STREAMING') {
+        updateDraft({ status: 'FAILED', content: 'No response was received.' })
+      }
+      if (draftRef.current) {
+        commitTurn(userTemp, draftRef.current)
+      }
+      controllerRef.current = null
+    }
+  }
+
+  const handleEvent = (event: StreamEvent) => {
+    switch (event.event) {
+      case 'token':
+        updateDraft({ content: (draftRef.current?.content ?? '') + event.text })
+        break
+      case 'citations':
+        updateDraft({ citations: event.citations })
+        break
+      case 'done':
+        updateDraft({
+          id: event.reply.messageId,
+          content: event.reply.content,
+          status: event.reply.status,
+          citations: event.reply.citations,
+        })
+        break
+      case 'error':
+        updateDraft({ status: 'FAILED' })
+        setError(event.message)
+        break
+    }
+  }
+
+  const stop = () => {
+    controllerRef.current?.abort()
   }
 
   const endRef = useRef<HTMLDivElement | null>(null)
+  const lastMessageContent = messages[messages.length - 1]?.content
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-  }, [messages.length, busy])
+  }, [messages.length, lastMessageContent])
 
   return (
     <main className="chat-pane">
       <div className="thread">
         {messages.map((message) => (
-          <MessageRow key={message.id} message={message} />
+          <MessageRow key={`${conversationId}-${message.id}`} message={message} />
         ))}
-        {busy && (
+        {busy && draftAssistant?.content.length === 0 && (
           <div className="msg msg-assistant">
             <span className="typing" aria-label="thinking">
               <span className="typing-dot" />
@@ -109,7 +178,7 @@ function Thread({ conversationId }: { conversationId: string }) {
         </p>
       )}
 
-      <Composer onSend={send} busy={busy} />
+      <Composer onSend={(text) => void send(text)} onStop={stop} busy={busy} />
     </main>
   )
 }
@@ -123,14 +192,4 @@ function Welcome() {
       </p>
     </div>
   )
-}
-
-function assistantFromReply(reply: ChatReply): Message {
-  return {
-    id: reply.messageId,
-    role: reply.role,
-    content: reply.content,
-    status: reply.status,
-    createdAt: reply.createdAt,
-  }
 }

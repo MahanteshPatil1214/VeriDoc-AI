@@ -29,5 +29,6 @@ export type {
   Message,
   Citation,
   ChatReply,
+  StreamEvent,
 } from './types'
 export const hasStoredRefreshToken = () => localStorage.getItem(REFRESH_TOKEN_KEY) !== null

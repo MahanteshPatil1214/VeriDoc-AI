@@ -5,10 +5,11 @@ import './Composer.css'
 
 interface ComposerProps {
   onSend: (text: string) => void
+  onStop: () => void
   busy: boolean
 }
 
-export function Composer({ onSend, busy }: ComposerProps) {
+export function Composer({ onSend, onStop, busy }: ComposerProps) {
   const [value, setValue] = useState('')
 
   const submit = (event: FormEvent) => {
@@ -38,14 +39,25 @@ export function Composer({ onSend, busy }: ComposerProps) {
           placeholder="Ask anything about your documents…"
           autoFocus
         />
-        <button
-          className="btn btn-primary composer-send"
-          type="submit"
-          disabled={busy || value.trim().length === 0}
-          aria-label="Send message"
-        >
-          {busy ? 'Sending…' : 'Send'}
-        </button>
+        {busy ? (
+          <button
+            className="btn composer-stop"
+            type="button"
+            onClick={onStop}
+            aria-label="Stop generating"
+          >
+            Stop
+          </button>
+        ) : (
+          <button
+            className="btn btn-primary composer-send"
+            type="submit"
+            disabled={value.trim().length === 0}
+            aria-label="Send message"
+          >
+            Send
+          </button>
+        )}
       </div>
       <p className="composer-hint">Press Enter to send, Shift+Enter for a new line.</p>
     </form>

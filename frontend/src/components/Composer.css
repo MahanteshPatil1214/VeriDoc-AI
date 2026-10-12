@@ -42,6 +42,18 @@
   padding: 9px 16px;
 }
 
+.composer-stop {
+  border-radius: var(--radius-md);
+  padding: 9px 16px;
+  background: var(--danger);
+  color: #fff;
+}
+
+.composer-stop:hover {
+  background: var(--danger);
+  opacity: 0.9;
+}
+
 .composer-hint {
   margin: 0;
   text-align: center;

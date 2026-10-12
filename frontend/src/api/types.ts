@@ -61,6 +61,8 @@ export interface Message {
   content: string
   status: string
   createdAt: string
+  /** Citations are attached while streaming; the history feed does not include them. */
+  citations?: Citation[]
 }
 
 export interface Citation {
@@ -88,6 +90,15 @@ export interface ChatReply {
   createdAt: string
   citations: Citation[]
 }
+
+// ---- streaming (SSE over GET) ----
+
+/** The normalized events the assistant stream can yield. */
+export type StreamEvent =
+  | { event: 'token'; text: string }
+  | { event: 'citations'; citations: Citation[] }
+  | { event: 'done'; reply: ChatReply }
+  | { event: 'error'; code: string; message: string }
 
 /** Backend error envelope: { code, message } with a stable HTTP status. */
 export interface ApiProblem {
