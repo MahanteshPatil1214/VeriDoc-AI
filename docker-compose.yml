@@ -61,6 +61,9 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      # Docker Desktop's BuildKit sandbox sometimes fails to resolve Maven
+      # Central during dependency:go-offline; host networking fixes it.
+      network: host
     environment:
       # Compose-network addresses override the localhost values in .env.
       DATABASE_URL: jdbc:postgresql://postgres:5432/${DATABASE_NAME:-veridoc}
