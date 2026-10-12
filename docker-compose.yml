@@ -89,6 +89,19 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    # nginx serves the SPA and proxies /api to the backend on the same origin,
+    # so no browser CORS configuration is needed in production.
+    ports:
+      - "${FRONTEND_PORT:-8081}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   postgres-data:
   storage-data:
