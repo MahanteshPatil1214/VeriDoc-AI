@@ -25,6 +25,8 @@ export function DocumentsDrawer() {
   const [attachError, setAttachError] = useState<string | null>(null)
   const [selected, setSelected] = useState<string[]>([])
   const [dragging, setDragging] = useState(false)
+  const [deletePendingId, setDeletePendingId] = useState<string | null>(null)
+  const [retryPendingId, setRetryPendingId] = useState<string | null>(null)
 
   const { data: documents = [] } = useQuery({
     queryKey: ['documents'],
@@ -102,6 +104,35 @@ export function DocumentsDrawer() {
     setSelected((current) =>
       current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
     )
+
+  const deleteDocument = async (document: DocumentListItem) => {
+    if (deletePendingId) return
+    if (!window.confirm(`Delete "${document.filename}"? This removes it from your library.`)) return
+    setDeletePendingId(document.id)
+    try {
+      await documentsApi(api).remove(document.id)
+      setSelected((current) => current.filter((item) => item !== document.id))
+      void queryClient.invalidateQueries({ queryKey: ['documents'] })
+      void queryClient.invalidateQueries({ queryKey: ['conversation', activeConversationId] })
+    } catch (error) {
+      setLocalError(error instanceof ApiError ? error.message : 'Could not delete the document.')
+    } finally {
+      setDeletePendingId(null)
+    }
+  }
+
+  const retryDocument = async (document: DocumentListItem) => {
+    if (retryPendingId) return
+    setRetryPendingId(document.id)
+    try {
+      await documentsApi(api).retry(document.id)
+      void queryClient.invalidateQueries({ queryKey: ['documents'] })
+    } catch (error) {
+      setAttachError(error instanceof ApiError ? error.message : 'Could not retry the document.')
+    } finally {
+      setRetryPendingId(null)
+    }
+  }
 
   if (!documentsOpen) return null
 
@@ -193,6 +224,10 @@ export function DocumentsDrawer() {
                     attached={attachedIds.has(doc.id)}
                     selected={selected.includes(doc.id)}
                     onToggle={() => toggleSelected(doc.id)}
+                    deletePending={deletePendingId === doc.id}
+                    retryPending={retryPendingId === doc.id}
+                    onDelete={() => void deleteDocument(doc)}
+                    onRetry={() => void retryDocument(doc)}
                   />
                 ))}
               </ul>
@@ -229,12 +264,20 @@ function DocumentRow({
   attached,
   selected,
   onToggle,
+  deletePending,
+  retryPending,
+  onDelete,
+  onRetry,
 }: {
   document: DocumentListItem
   selectable: boolean
   attached: boolean
   selected: boolean
   onToggle: () => void
+  deletePending: boolean
+  retryPending: boolean
+  onDelete: () => void
+  onRetry: () => void
 }) {
   const processing = isProcessing(document.status)
   const step = statusStep(document.status)
@@ -272,6 +315,27 @@ function DocumentRow({
       </p>
 
       {isFailed(document.status) && <FailedReason id={document.id} />}
+
+      <div className="document-actions">
+        {isFailed(document.status) && (
+          <button
+            className="btn btn-ghost doc-action"
+            type="button"
+            disabled={retryPending}
+            onClick={onRetry}
+          >
+            {retryPending ? 'Retrying…' : 'Retry'}
+          </button>
+        )}
+        <button
+          className="btn btn-ghost doc-action"
+          type="button"
+          disabled={deletePending}
+          onClick={onDelete}
+        >
+          {deletePending ? 'Deleting…' : 'Delete'}
+        </button>
+      </div>
     </li>
   )
 }

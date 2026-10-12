@@ -12,4 +12,10 @@ export const documentsApi = (client: ApiClient) => ({
   list: () => client.json<DocumentListItem[]>('/api/v1/documents'),
 
   status: (id: string) => client.json<DocumentStatusResponse>(`/api/v1/documents/${id}`),
+
+  /** Hard-removes the document (soft-deleted server-side; clusters stay intact). */
+  remove: (id: string) => client.json<void>(`/api/v1/documents/${id}`, { method: 'DELETE' }),
+
+  /** Re-runs ingestion for a FAILED document. */
+  retry: (id: string) => client.json<DocumentStatusResponse>(`/api/v1/documents/${id}/retry`, { method: 'POST' }),
 })

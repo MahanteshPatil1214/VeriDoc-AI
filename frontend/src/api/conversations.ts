@@ -18,4 +18,12 @@ export const conversationsApi = (client: ApiClient) => ({
       method: 'POST',
       body: JSON.stringify({ documentIds }),
     }),
+
+  rename: (id: string, title: string) =>
+    client.json<Conversation>(`/api/v1/conversations/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title }),
+    }),
+
+  remove: (id: string) => client.json<void>(`/api/v1/conversations/${id}`, { method: 'DELETE' }),
 })

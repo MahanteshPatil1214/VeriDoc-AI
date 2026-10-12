@@ -249,6 +249,27 @@
   color: var(--danger);
 }
 
+.document-actions {
+  display: flex;
+  gap: 6px;
+  padding-top: 2px;
+}
+
+.doc-action {
+  padding: 4px 10px;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.doc-action:hover {
+  color: var(--ink);
+}
+
+.doc-action:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .drawer-footer {
   padding: 14px 18px;
   border-top: 1px solid var(--border);
