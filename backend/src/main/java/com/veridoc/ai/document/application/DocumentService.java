@@ -7,6 +7,7 @@ import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -22,7 +23,10 @@ import com.veridoc.ai.document.api.dto.DocumentDtos.DocumentStatusResponse;
 import com.veridoc.ai.document.api.dto.DocumentDtos.UploadResponse;
 import com.veridoc.ai.document.domain.Document;
 import com.veridoc.ai.document.domain.DocumentStatus;
+import com.veridoc.ai.document.event.DocumentDeletedEvent;
+import com.veridoc.ai.document.persistence.DocumentChunkRepository;
 import com.veridoc.ai.document.persistence.DocumentRepository;
+import com.veridoc.ai.document.persistence.DocumentVersionRepository;
 import com.veridoc.ai.document.storage.LocalDocumentStorage;
 import com.veridoc.ai.security.authenticated.AuthenticatedUser;
 
@@ -39,8 +43,11 @@ public class DocumentService {
     private static final Logger log = LoggerFactory.getLogger(DocumentService.class);
 
     private final DocumentRepository documentRepository;
+    private final DocumentVersionRepository documentVersionRepository;
+    private final DocumentChunkRepository documentChunkRepository;
     private final LocalDocumentStorage storage;
     private final StorageProperties storageProperties;
+    private final ApplicationEventPublisher eventPublisher;
 
     private final com.veridoc.ai.security.RedisRateLimiter rateLimiter;
     private final RateLimitProperties rateLimitProperties;
@@ -48,14 +55,20 @@ public class DocumentService {
     private final com.veridoc.ai.document.ingestion.processing.DocumentProcessor documentProcessor;
 
     public DocumentService(DocumentRepository documentRepository,
+                           DocumentVersionRepository documentVersionRepository,
+                           DocumentChunkRepository documentChunkRepository,
                            LocalDocumentStorage storage,
                            StorageProperties storageProperties,
+                           ApplicationEventPublisher eventPublisher,
                            com.veridoc.ai.security.RedisRateLimiter rateLimiter,
                            RateLimitProperties rateLimitProperties,
                            com.veridoc.ai.document.ingestion.processing.DocumentProcessor documentProcessor) {
         this.documentRepository = documentRepository;
+        this.documentVersionRepository = documentVersionRepository;
+        this.documentChunkRepository = documentChunkRepository;
         this.storage = storage;
         this.storageProperties = storageProperties;
+        this.eventPublisher = eventPublisher;
         this.rateLimiter = rateLimiter;
         this.rateLimitProperties = rateLimitProperties;
         this.documentProcessor = documentProcessor;
@@ -171,6 +184,65 @@ public class DocumentService {
     public DocumentStatusResponse status(AuthenticatedUser user, UUID id) {
         Document document = documentRepository.findByIdAndOwnerId(id, user.userId())
                 .orElseThrow(() -> new AppException(ErrorCode.NOT_FOUND, "Document not found"));
+        return toStatusResponse(document);
+    }
+
+    /**
+     * Soft-deletes a document: it disappears from every listing and from
+     * retrieval, its vectors are dropped and the stored original is removed. The
+     * citations that reference it are intentionally kept, so the evidence trail
+     * of past answers survives the document itself.
+     */
+    @Transactional
+    public void delete(AuthenticatedUser user, UUID id) {
+        Document document = documentRepository.findByIdAndOwnerId(id, user.userId())
+                .orElseThrow(() -> new AppException(ErrorCode.DOCUMENT_NOT_FOUND, "Document not found"));
+        if (document.getStatus() == DocumentStatus.DELETED) {
+            // Deleting an already-deleted document is a no-op, not an error.
+            return;
+        }
+        String storagePath = document.getStoragePath();
+        document.softDelete();
+        documentRepository.save(document);
+        cleanupDerivedData(id);
+        try {
+            storage.delete(storagePath);
+        } catch (RuntimeException e) {
+            // The row is already gone from every user-facing path; a missing or
+            // unreadable original must not fail the API call.
+            log.warn("Could not remove stored file for document {}: {}", id, e.getMessage());
+        }
+        eventPublisher.publishEvent(new DocumentDeletedEvent(id));
+        log.info("Deleted document id={} owner={}", id, user.userId());
+    }
+
+    /**
+     * Re-runs the ingestion pipeline for a failed document. Only {@link
+     * DocumentStatus#FAILED} documents may be retried: anything else is rejected
+     * so a retry cannot race an active pipeline or re-publish a deleted one.
+     */
+    @Transactional
+    public DocumentStatusResponse retry(AuthenticatedUser user, UUID id) {
+        Document document = documentRepository.findByIdAndOwnerId(id, user.userId())
+                .orElseThrow(() -> new AppException(ErrorCode.DOCUMENT_NOT_FOUND, "Document not found"));
+        if (document.getStatus() != DocumentStatus.FAILED) {
+            throw new AppException(ErrorCode.CONFLICT, "Only failed documents can be retried.");
+        }
+        cleanupDerivedData(id);
+        document.markProcessing(DocumentStatus.PROCESSING);
+        documentRepository.save(document);
+        triggerProcessingAfterCommit(id);
+        log.info("Retrying document id={} owner={}", id, user.userId());
+        return toStatusResponse(document);
+    }
+
+    /** Drops chunks and versions so a retry or delete starts from a clean slate. */
+    private void cleanupDerivedData(UUID documentId) {
+        documentChunkRepository.deleteByDocumentId(documentId);
+        documentVersionRepository.deleteByDocumentId(documentId);
+    }
+
+    private static DocumentStatusResponse toStatusResponse(Document document) {
         return new DocumentStatusResponse(document.getId(), document.getStatus().name(),
                 document.getProcessingStage() != null ? document.getProcessingStage().name() : null,
                 document.getProcessingError(),

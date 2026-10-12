@@ -11,6 +11,7 @@ import java.util.stream.Collectors;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.veridoc.ai.common.error.AppException;
 import com.veridoc.ai.common.error.ErrorCode;
@@ -123,5 +124,30 @@ public class ConversationService {
 
         return new ConversationResponse(conversation.getId(), conversation.getTitle(),
                 conversation.getCreatedAt(), conversation.getUpdatedAt(), refs);
+    }
+
+    /** Renames a conversation owned by the caller. */
+    @Transactional
+    public ConversationResponse rename(AuthenticatedUser user, UUID conversationId, String title) {
+        Conversation conversation = conversationRepository
+                .findByIdAndOwnerId(conversationId, user.userId())
+                .orElseThrow(() -> new AppException(ErrorCode.CONVERSATION_NOT_FOUND,
+                        "Conversation not found"));
+        conversation.rename(title);
+        conversationRepository.save(conversation);
+        return detail(user, conversationId);
+    }
+
+    /**
+     * Deletes a conversation owned by the caller. Messages, citations, feedback
+     * and document links are removed by the foreign-key cascade.
+     */
+    @Transactional
+    public void delete(AuthenticatedUser user, UUID conversationId) {
+        Conversation conversation = conversationRepository
+                .findByIdAndOwnerId(conversationId, user.userId())
+                .orElseThrow(() -> new AppException(ErrorCode.CONVERSATION_NOT_FOUND,
+                        "Conversation not found"));
+        conversationRepository.delete(conversation);
     }
 }

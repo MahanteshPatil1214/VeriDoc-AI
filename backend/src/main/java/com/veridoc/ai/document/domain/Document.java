@@ -118,6 +118,11 @@ public class Document {
     }
 
     public void markFailed(String error) {
+        // A document deleted mid-pipeline must stay deleted: a late async
+        // failure callback is not allowed to resurrect it.
+        if (status == DocumentStatus.DELETED) {
+            return;
+        }
         status = DocumentStatus.FAILED;
         processingStage = DocumentStatus.FAILED;
         processingError = truncate(error);
@@ -133,6 +138,10 @@ public class Document {
     }
 
     public void markReady(int pageCount, int chunkCount) {
+        // Never let a completion that raced a delete re-publish the document.
+        if (status == DocumentStatus.DELETED) {
+            return;
+        }
         this.pageCount = pageCount;
         this.chunkCount = chunkCount;
         this.status = DocumentStatus.READY;

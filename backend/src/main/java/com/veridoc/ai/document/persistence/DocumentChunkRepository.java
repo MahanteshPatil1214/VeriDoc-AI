@@ -17,6 +17,9 @@ public interface DocumentChunkRepository extends JpaRepository<DocumentChunk, UU
 
     void deleteByVersionId(UUID versionId);
 
+    /** Removes every chunk of a document; used when deleting or retrying it. */
+    long deleteByDocumentId(UUID documentId);
+
     List<DocumentChunk> findByDocumentIdOrderByChunkIndexAsc(UUID documentId);
 
     /**

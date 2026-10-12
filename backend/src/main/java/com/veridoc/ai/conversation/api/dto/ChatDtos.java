@@ -21,6 +21,11 @@ public final class ChatDtos {
     ) {
     }
 
+    public record RenameConversationRequest(
+            @NotBlank @Size(max = 255) String title
+    ) {
+    }
+
     public record AttachDocumentsRequest(
             @NotEmpty List<UUID> documentIds
     ) {

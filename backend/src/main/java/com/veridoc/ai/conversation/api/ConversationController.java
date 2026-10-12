@@ -5,7 +5,9 @@ import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -16,6 +18,7 @@ import com.veridoc.ai.conversation.api.dto.ChatDtos.AttachDocumentsRequest;
 import com.veridoc.ai.conversation.api.dto.ChatDtos.ConversationListItem;
 import com.veridoc.ai.conversation.api.dto.ChatDtos.ConversationResponse;
 import com.veridoc.ai.conversation.api.dto.ChatDtos.CreateConversationRequest;
+import com.veridoc.ai.conversation.api.dto.ChatDtos.RenameConversationRequest;
 import com.veridoc.ai.conversation.application.ConversationService;
 import com.veridoc.ai.security.CurrentUser;
 import com.veridoc.ai.security.authenticated.AuthenticatedUser;
@@ -57,5 +60,20 @@ public class ConversationController {
             @PathVariable("id") UUID id,
             @Valid @RequestBody AttachDocumentsRequest request) {
         return ResponseEntity.ok(conversationService.attach(user, id, request.documentIds()));
+    }
+
+    @PatchMapping("/{id}")
+    public ResponseEntity<ConversationResponse> rename(
+            @CurrentUser AuthenticatedUser user,
+            @PathVariable("id") UUID id,
+            @Valid @RequestBody RenameConversationRequest request) {
+        return ResponseEntity.ok(conversationService.rename(user, id, request.title()));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(@CurrentUser AuthenticatedUser user,
+                                       @PathVariable("id") UUID id) {
+        conversationService.delete(user, id);
+        return ResponseEntity.noContent().build();
     }
 }

@@ -7,6 +7,7 @@ import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -48,5 +49,18 @@ public class DocumentController {
     public ResponseEntity<DocumentStatusResponse> status(@CurrentUser AuthenticatedUser user,
                                                         @PathVariable("id") UUID id) {
         return ResponseEntity.ok(documentService.status(user, id));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(@CurrentUser AuthenticatedUser user,
+                                       @PathVariable("id") UUID id) {
+        documentService.delete(user, id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{id}/retry")
+    public ResponseEntity<DocumentStatusResponse> retry(@CurrentUser AuthenticatedUser user,
+                                                        @PathVariable("id") UUID id) {
+        return ResponseEntity.ok(documentService.retry(user, id));
     }
 }
