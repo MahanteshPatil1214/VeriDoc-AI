@@ -17,6 +17,7 @@ export { ApiError } from './types'
 export { authApi } from './auth'
 export { conversationsApi } from './conversations'
 export { chatApi } from './chat'
+export { documentsApi } from './documents'
 export type {
   AuthResponse,
   LoginRequest,
@@ -26,6 +27,10 @@ export type {
   Conversation,
   ConversationListItem,
   ConversationDocumentRef,
+  DocumentListItem,
+  DocumentStatus,
+  DocumentStatusResponse,
+  UploadResponse,
   Message,
   Citation,
   ChatReply,

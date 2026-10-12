@@ -53,6 +53,45 @@ export interface ConversationListItem {
   updatedAt: string
 }
 
+// ---- documents ----
+
+/** Mirrors the backend DocumentStatus enum; unknown values fall back to string. */
+export type DocumentStatus =
+  | 'UPLOADING'
+  | 'PROCESSING'
+  | 'EXTRACTING'
+  | 'CHUNKING'
+  | 'EMBEDDING'
+  | 'INDEXING'
+  | 'READY'
+  | 'FAILED'
+  | 'DELETED'
+
+export interface DocumentListItem {
+  id: string
+  filename: string
+  status: DocumentStatus
+  pageCount: number | null
+  chunkCount: number | null
+  createdAt: string
+}
+
+export interface DocumentStatusResponse {
+  id: string
+  status: DocumentStatus
+  stage: string | null
+  error: string | null
+  pageCount: number | null
+  chunkCount: number | null
+}
+
+export interface UploadResponse {
+  id: string
+  filename: string
+  status: DocumentStatus
+  sizeBytes: number
+}
+
 // ---- messages / chat ----
 
 export interface Message {

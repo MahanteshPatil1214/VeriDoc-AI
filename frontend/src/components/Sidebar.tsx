@@ -8,7 +8,7 @@ import './Sidebar.css'
 
 export function Sidebar() {
   const { user, logout } = useAuth()
-  const { activeConversationId, setActiveConversation } = useWorkspace()
+  const { activeConversationId, setActiveConversation, toggleDocuments } = useWorkspace()
   const queryClient = useQueryClient()
 
   const { data: conversations = [] } = useQuery({
@@ -33,14 +33,24 @@ export function Sidebar() {
           <span className="sidebar-logo" aria-hidden="true" />
           <span className="sidebar-name">VeriDoc AI</span>
         </div>
-        <button
-          className="btn btn-ghost sidebar-new"
-          type="button"
-          onClick={() => createMutation.mutate()}
-          disabled={createMutation.isPending}
-        >
-          {createMutation.isPending ? 'Creating…' : '+ New chat'}
-        </button>
+        <div className="sidebar-actions">
+          <button
+            className="btn btn-ghost sidebar-new"
+            type="button"
+            onClick={() => createMutation.mutate()}
+            disabled={createMutation.isPending}
+          >
+            {createMutation.isPending ? 'Creating…' : '+ New chat'}
+          </button>
+          <button
+            className="btn btn-ghost sidebar-docs"
+            type="button"
+            onClick={toggleDocuments}
+            aria-label="Open documents"
+          >
+            Documents
+          </button>
+        </div>
       </div>
 
       <nav className="sidebar-conversations" aria-label="Conversations">

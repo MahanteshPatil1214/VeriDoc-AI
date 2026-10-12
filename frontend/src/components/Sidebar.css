@@ -35,8 +35,19 @@
   font-size: var(--text-lg);
 }
 
+.sidebar-actions {
+  display: flex;
+  gap: 8px;
+}
+
 .sidebar-new {
-  width: 100%;
+  flex: 1;
+  background: var(--surface);
+  border-color: var(--border-strong);
+}
+
+.sidebar-docs {
+  flex: none;
   background: var(--surface);
   border-color: var(--border-strong);
 }
