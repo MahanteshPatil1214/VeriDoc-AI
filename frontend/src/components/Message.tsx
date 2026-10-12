@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import type { Citation, Message } from '../api'
+import { Markdown } from './Markdown'
 import './Message.css'
 
 interface MessageProps {
@@ -23,7 +24,9 @@ export function MessageRow({ message }: MessageProps) {
   const citations = message.citations ?? []
   return (
     <div className="msg msg-assistant">
-      <div className={`msg-prose${failed ? ' msg-error' : ''}`}>{message.content}</div>
+      <div className={`msg-prose${failed ? ' msg-error' : ''}`}>
+        <Markdown content={message.content} streaming={message.status === 'STREAMING'} />
+      </div>
       {citations.length > 0 && <Sources citations={citations} />}
     </div>
   )

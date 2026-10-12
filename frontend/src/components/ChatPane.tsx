@@ -1,12 +1,19 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { api, ApiError, chatApi } from '../api'
+import { api, ApiError, chatApi, conversationsApi } from '../api'
 import type { Message, StreamEvent } from '../api'
 import { useWorkspace } from '../chat/useWorkspace'
 import { Composer } from './Composer'
 import { MessageRow } from './Message'
 import './ChatPane.css'
+
+const SUGGESTIONS = [
+  'Summarize the key points.',
+  'What are the main obligations?',
+  'List any deadlines or dates mentioned.',
+  'What risks or warnings are called out?',
+]
 
 export function ChatPane() {
   const { activeConversationId } = useWorkspace()
@@ -23,6 +30,7 @@ export function ChatPane() {
 
 function Thread({ conversationId }: { conversationId: string }) {
   const queryClient = useQueryClient()
+  const setPendingPrompt = useWorkspace((state) => state.setPendingPrompt)
   const { data: serverMessages = [] } = useQuery({
     queryKey: ['messages', conversationId],
     queryFn: () => chatApi(api).messages(conversationId),
@@ -35,6 +43,8 @@ function Thread({ conversationId }: { conversationId: string }) {
   const draftRef = useRef<Message | null>(null)
   const [error, setError] = useState<string | null>(null)
   const controllerRef = useRef<AbortController | null>(null)
+  const sendRef = useRef<((text: string) => Promise<void>) | null>(null)
+  const initialPromptRef = useRef(useWorkspace.getState().pendingPrompt)
 
   const messages = useMemo(
     () => [...serverMessages, ...pending, ...(draftAssistant ? [draftAssistant] : [])],
@@ -121,6 +131,19 @@ function Thread({ conversationId }: { conversationId: string }) {
     }
   }
 
+  useEffect(() => {
+    sendRef.current = send
+  })
+
+  // Auto-send a prompt queued before this conversation existed (welcome suggestions).
+  useEffect(() => {
+    const prompt = initialPromptRef.current
+    if (!prompt) return
+    initialPromptRef.current = null
+    setPendingPrompt(null)
+    void sendRef.current?.(prompt)
+  }, [setPendingPrompt])
+
   const handleEvent = (event: StreamEvent) => {
     switch (event.event) {
       case 'token':
@@ -157,6 +180,26 @@ function Thread({ conversationId }: { conversationId: string }) {
   return (
     <main className="chat-pane">
       <div className="thread">
+        {messages.length === 0 && !busy && (
+          <div className="chat-empty">
+            <p className="chat-greeting">Ask anything about your documents.</p>
+            <p className="chat-hint">
+              Every answer is grounded in the PDFs you upload, with sources you can inspect.
+            </p>
+            <div className="suggestions">
+              {SUGGESTIONS.map((prompt) => (
+                <button
+                  key={prompt}
+                  type="button"
+                  className="suggestion"
+                  onClick={() => void send(prompt)}
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         {messages.map((message) => (
           <MessageRow key={`${conversationId}-${message.id}`} message={message} />
         ))}
@@ -184,12 +227,43 @@ function Thread({ conversationId }: { conversationId: string }) {
 }
 
 function Welcome() {
+  const queryClient = useQueryClient()
+  const setActiveConversation = useWorkspace((state) => state.setActiveConversation)
+  const setPendingPrompt = useWorkspace((state) => state.setPendingPrompt)
+
+  const createMutation = useMutation({
+    mutationFn: (title: string) => conversationsApi(api).create(title),
+    onSuccess: (created) => {
+      void queryClient.invalidateQueries({ queryKey: ['conversations'] })
+      setActiveConversation(created.id)
+    },
+    onError: () => setPendingPrompt(null),
+  })
+
+  const start = (prompt: string) => {
+    setPendingPrompt(prompt)
+    createMutation.mutate(prompt.length > 60 ? `${prompt.slice(0, 57)}…` : prompt)
+  }
+
   return (
     <div className="chat-empty">
       <p className="chat-greeting">Ask anything about your documents.</p>
       <p className="chat-hint">
         Every answer is grounded in the PDFs you upload, with sources you can inspect.
       </p>
+      <div className="suggestions">
+        {SUGGESTIONS.map((prompt) => (
+          <button
+            key={prompt}
+            type="button"
+            className="suggestion"
+            disabled={createMutation.isPending}
+            onClick={() => start(prompt)}
+          >
+            {prompt}
+          </button>
+        ))}
+      </div>
     </div>
   )
 }

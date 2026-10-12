@@ -2,4 +2,33 @@
   height: 100%;
   display: flex;
   overflow: hidden;
+  position: relative;
+}
+
+.mobile-menu {
+  display: none;
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 30;
+  width: 36px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-size: 18px;
+  box-shadow: var(--shadow-soft);
+}
+
+@media (max-width: 820px) {
+  .mobile-menu {
+    display: flex;
+  }
+
+  .chat-pane {
+    padding-top: 52px;
+  }
 }

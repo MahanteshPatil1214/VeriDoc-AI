@@ -8,7 +8,8 @@ import './Sidebar.css'
 
 export function Sidebar() {
   const { user, logout } = useAuth()
-  const { activeConversationId, setActiveConversation, toggleDocuments } = useWorkspace()
+  const { activeConversationId, setActiveConversation, toggleDocuments, sidebarOpen, setSidebarOpen } =
+    useWorkspace()
   const queryClient = useQueryClient()
 
   const { data: conversations = [] } = useQuery({
@@ -20,14 +21,24 @@ export function Sidebar() {
     mutationFn: () => conversationsApi(api).create('New chat'),
     onSuccess: (created) => {
       setActiveConversation(created.id)
+      setSidebarOpen(false)
       void queryClient.invalidateQueries({ queryKey: ['conversations'] })
     },
   })
 
-  const open = (id: string) => setActiveConversation(id)
+  const open = (id: string) => {
+    setActiveConversation(id)
+    setSidebarOpen(false)
+  }
 
   return (
-    <aside className="sidebar">
+    <>
+      <div
+        className={`sidebar-scrim${sidebarOpen ? ' show' : ''}`}
+        role="presentation"
+        onClick={() => setSidebarOpen(false)}
+      />
+      <aside className={`sidebar${sidebarOpen ? ' open' : ''}`}>
       <div className="sidebar-header">
         <div className="sidebar-brand">
           <span className="sidebar-logo" aria-hidden="true" />
@@ -87,6 +98,7 @@ export function Sidebar() {
           </button>
         </div>
       </footer>
-    </aside>
+      </aside>
+    </>
   )
 }

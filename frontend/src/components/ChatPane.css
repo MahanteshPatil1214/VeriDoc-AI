@@ -39,6 +39,35 @@
   font-size: var(--text-md);
 }
 
+.suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 18px;
+  max-width: 580px;
+}
+
+.suggestion {
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--ink-soft);
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: var(--text-sm);
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.suggestion:hover:not(:disabled) {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-weak);
+}
+
+.suggestion:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .chat-error {
   margin: 0 auto;
   max-width: var(--reading-width);
