@@ -82,8 +82,8 @@ Spring Boot 4.1 monolith. Packages by aggregate:
 
 ### Google Gemini
 
-- Chat model: `gemini-2.5-flash` for grounded answers.
-- Embedding model: `text-embedding-004`, 768 dimensions, batch-embedded.
+- Chat model: `gemini-3.5-flash` for grounded answers.
+- Embedding model: `gemini-embedding-001`, 768 dimensions, batch-embedded.
 - The API key lives only in backend environment variables.
 
 ## Document ingestion pipeline

@@ -3,9 +3,10 @@ package com.veridoc.ai.rag;
 import java.util.List;
 import java.util.UUID;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.embedding.EmbeddingRequest;
-import org.springframework.ai.google.genai.text.GoogleGenAiTextEmbeddingOptions;
 import org.springframework.stereotype.Service;
 
 import com.veridoc.ai.common.error.AppException;
@@ -15,6 +16,7 @@ import com.veridoc.ai.config.properties.RetrievalProperties;
 import com.veridoc.ai.conversation.persistence.ConversationDocumentRepository;
 import com.veridoc.ai.conversation.persistence.ConversationRepository;
 import com.veridoc.ai.document.persistence.RetrievedChunkRow;
+import com.veridoc.ai.infrastructure.config.EmbeddingOptionsFactory;
 import com.veridoc.ai.infrastructure.vector.PgVectorChunkRepository;
 
 /**
@@ -27,6 +29,8 @@ import com.veridoc.ai.infrastructure.vector.PgVectorChunkRepository;
  */
 @Service
 public class RetrievalService {
+
+    private static final Logger log = LoggerFactory.getLogger(RetrievalService.class);
 
     private final ConversationRepository conversationRepository;
     private final ConversationDocumentRepository conversationDocumentRepository;
@@ -75,15 +79,28 @@ public class RetrievalService {
 
         List<UUID> documentIds = conversationDocumentRepository.findDocumentIds(conversationId);
         if (documentIds.isEmpty()) {
+            log.info("retrieval.skip conversation={} reason=noDocuments", conversationId);
             return List.of();
         }
 
+        long tw = System.currentTimeMillis();
+        log.info("retrieval.rewrite.start conversation={} rewrite={}", conversationId, rewrite);
         String effectiveQuery = rewrite ? queryRewriteService.rewrite(query) : query;
+        log.info("retrieval.rewrite.done elapsedMs={} changed={}",
+                System.currentTimeMillis() - tw, !effectiveQuery.equals(query));
+
+        long te = System.currentTimeMillis();
         double[] queryVector = embedQuery(effectiveQuery);
+        log.info("retrieval.embedQuery.done elapsedMs={} dims={}",
+                System.currentTimeMillis() - te, queryVector.length);
+
+        long ts = System.currentTimeMillis();
         List<RetrievedChunkRow> candidates = pgVectorChunkRepository.similaritySearch(
                 ownerId, documentIds, queryVector,
                 embeddingProperties.model(), embeddingProperties.version(),
                 retrievalProperties.candidateK());
+        log.info("retrieval.search.done elapsedMs={} candidates={} docs={}",
+                System.currentTimeMillis() - ts, candidates.size(), documentIds.size());
 
         return candidates.stream()
                 .filter(row -> row.similarity() >= retrievalProperties.minScore())
@@ -92,21 +109,10 @@ public class RetrievalService {
     }
 
     private double[] embedQuery(String query) {
-        GoogleGenAiTextEmbeddingOptions options = GoogleGenAiTextEmbeddingOptions.builder()
-                .model(embeddingProperties.model())
-                .dimensions(embeddingProperties.dimensions())
-                .taskType(googleTaskType(embeddingProperties.queryTaskType()))
-                .build();
-        return toDoubles(embeddingModel.call(new EmbeddingRequest(List.of(query), options))
+        return toDoubles(embeddingModel.call(
+                        new EmbeddingRequest(List.of(query),
+                                EmbeddingOptionsFactory.forQuery(embeddingProperties)))
                 .getResults().get(0).getOutput());
-    }
-
-    private static GoogleGenAiTextEmbeddingOptions.TaskType googleTaskType(String value) {
-        try {
-            return GoogleGenAiTextEmbeddingOptions.TaskType.valueOf(value);
-        } catch (IllegalArgumentException e) {
-            throw new IllegalStateException("Unknown embedding task type: " + value, e);
-        }
     }
 
     private static double[] toDoubles(float[] floats) {

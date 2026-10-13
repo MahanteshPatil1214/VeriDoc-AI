@@ -1,11 +1,13 @@
 package com.veridoc.ai.infrastructure.config;
 
+import java.time.Duration;
+
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.retry.annotation.EnableRetry;
-import org.springframework.retry.support.RetryTemplate;
+import org.springframework.core.retry.RetryPolicy;
+import org.springframework.core.retry.RetryTemplate;
 
 import com.veridoc.ai.config.properties.AiProperties;
 import com.veridoc.ai.config.properties.EmbeddingProperties;
@@ -23,30 +25,53 @@ import com.veridoc.ai.config.properties.EmbeddingProperties;
  * never exposed to the frontend and never logged.
  */
 @Configuration
-@EnableRetry
 public class AiConfig {
 
     /**
      * Bounded retries with exponential backoff for transient provider failures.
-     * {@code retryOn} is deliberately narrow: only timeouts, rate limits and
-     * 5xx-class failures are retried. Validation errors and authentication
-     * failures fail fast because retrying them cannot succeed.
+     *
+     * <p>Spring AI's Gemini model consumes
+     * {@code org.springframework.core.retry.RetryTemplate} (Spring Framework 7),
+     * not the legacy Spring Retry type, so this is the template actually applied
+     * to the chat and embedding calls. The auto-configured template only retries
+     * {@code TransientAiException}, which the Gemini model never raises, so
+     * without this bean provider failures would never be retried.
+     *
+     * <p>The predicate is deliberately narrow: only timeouts, rate limits and
+     * 5xx-class failures are retried (see {@link AiExceptions#isTransient}).
+     * Validation errors and authentication failures fail fast because retrying
+     * them cannot succeed. Attempts are bounded by
+     * {@code veridoc.ai.max-attempts}, and the whole sequence is capped by
+     * {@link #overallRetryBudget}, so a hard-down provider can never hang the
+     * request thread indefinitely.
      */
     @Bean
     public RetryTemplate aiRetryTemplate(AiProperties properties) {
-        return RetryTemplate.builder()
-                // Hard ceiling: retries always terminate.
-                .maxAttempts(properties.maxAttempts())
-                .exponentialBackoff(
-                        properties.initialBackoff(),
-                        2.0,
-                        properties.maxBackoff(),
-                        // Randomised jitter so concurrent clients do not
-                        // synchronise their retries against the provider.
-                        true)
-                .retryOn(AiExceptions::isTransient)
-                .traversingCauses()
+        RetryPolicy policy = RetryPolicy.builder()
+                // maxRetries counts the retries after the initial call.
+                .maxRetries(properties.maxAttempts() - 1L)
+                .delay(properties.initialBackoff())
+                .multiplier(2.0)
+                .maxDelay(properties.maxBackoff())
+                // Randomised jitter so concurrent clients do not synchronise
+                // their retries against the provider.
+                .jitter(properties.initialBackoff())
+                .predicate(AiExceptions::isTransient)
+                .timeout(overallRetryBudget(properties))
                 .build();
+        return new RetryTemplate(policy);
+    }
+
+    /**
+     * Belt-and-suspenders ceiling: attempts are already bounded by
+     * {@code max-attempts} and each HTTP request by {@code request-timeout}, so
+     * this budget is only ever reached if backoff timing misbehaves.
+     */
+    private static Duration overallRetryBudget(AiProperties properties) {
+        return properties.requestTimeout()
+                .multipliedBy(properties.maxAttempts())
+                .plus(properties.maxBackoff().multipliedBy(properties.maxAttempts()))
+                .plus(properties.initialBackoff());
     }
 
     /**

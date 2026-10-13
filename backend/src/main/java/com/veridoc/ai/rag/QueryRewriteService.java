@@ -55,6 +55,8 @@ public class QueryRewriteService {
         if (!ragProperties.enableQueryRewriting() || question == null || question.isBlank()) {
             return question;
         }
+        long t0 = System.currentTimeMillis();
+        log.info("queryRewrite.modelCall.start questionChars={}", question.length());
         String rewritten;
         try {
             var response = chatModel.call(new Prompt(List.of(
@@ -62,9 +64,11 @@ public class QueryRewriteService {
                     new UserMessage(question))));
             rewritten = response.getResult().getOutput().getText();
         } catch (RuntimeException e) {
-            log.warn("Query rewriting failed; using the original question: {}", e.getMessage());
+            log.warn("queryRewrite.modelCall.failed after {}ms type={} message={}; using original question",
+                    System.currentTimeMillis() - t0, e.getClass().getName(), e.getMessage());
             return question;
         }
+        log.info("queryRewrite.modelCall.done elapsedMs={}", System.currentTimeMillis() - t0);
         String cleaned = VERBAL_OVERTHINKING.matcher(rewritten == null ? "" : rewritten)
                 .replaceFirst("").strip();
         if (cleaned.isBlank() || cleaned.length() > MAX_REWRITE_LENGTH) {

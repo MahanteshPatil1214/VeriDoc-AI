@@ -4,7 +4,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -35,6 +34,7 @@ import com.veridoc.ai.conversation.api.dto.ChatDtos.StreamToken;
 import com.veridoc.ai.conversation.domain.Conversation;
 import com.veridoc.ai.conversation.persistence.ConversationRepository;
 import com.veridoc.ai.document.persistence.RetrievedChunkRow;
+import com.veridoc.ai.infrastructure.config.AiExceptions;
 import com.veridoc.ai.message.domain.Message;
 import com.veridoc.ai.message.domain.MessageRole;
 import com.veridoc.ai.message.persistence.MessageRepository;
@@ -91,16 +91,26 @@ private final ConversationRepository conversationRepository;
     }
 
     public ChatResponseDto ask(AuthenticatedUser user, UUID conversationId, String question) {
+        long t0 = System.currentTimeMillis();
+        log.info("chat.ask.start conversation={} questionChars={} rewriting={}",
+                conversationId, question.length(), ragProperties.enableQueryRewriting());
         checkChatBudget(user);
+        log.info("chat.ask.afterRateLimit +{}ms", System.currentTimeMillis() - t0);
         Conversation conversation = requireConversation(user, conversationId);
         autoTitle(conversation, question);
 
         List<org.springframework.ai.chat.messages.Message> history = history(conversationId);
+        log.info("chat.ask.afterHistory +{}ms historyMessages={}",
+                System.currentTimeMillis() - t0, history.size());
 
-Message userMessage = Message.user(UUID.randomUUID(), conversationId, question);
+        Message userMessage = Message.user(UUID.randomUUID(), conversationId, question);
         messageRepository.save(userMessage);
 
+        long tre = System.currentTimeMillis();
+        log.info("chat.ask.retrieve.start +{}ms", tre - t0);
         List<RetrievedChunkRow> evidence = retrieve(user.userId(), conversationId, question);
+        log.info("chat.ask.retrieve.done +{}ms elapsedMs={} evidence={}",
+                System.currentTimeMillis() - t0, System.currentTimeMillis() - tre, evidence.size());
 
         Instant started = Instant.now();
         Message assistant;
@@ -111,14 +121,23 @@ Message userMessage = Message.user(UUID.randomUUID(), conversationId, question);
                     null, null, 0L);
             messageRepository.save(assistant);
             citationDtos = List.of();
+            log.info("chat.ask.refused +{}ms", System.currentTimeMillis() - t0);
         } else {
+            long tp = System.currentTimeMillis();
             GroundedPromptBuilder.PromptBundle bundle =
                     promptBuilder.build(question, evidence, history);
+            log.info("chat.ask.prompt.built +{}ms elapsedMs={} evidenceUsed={} promptMessages={}",
+                    System.currentTimeMillis() - t0, System.currentTimeMillis() - tp,
+                    bundle.evidence().size(), bundle.prompt().getInstructions().size());
             debugEvidence(question, bundle.evidence());
             meterRegistry.counter("veridoc.rag.citations").increment(bundle.evidence().size());
+            log.info("chat.ask.generate.start +{}ms", System.currentTimeMillis() - t0);
             assistant = generate(conversationId, bundle, started);
+            log.info("chat.ask.generate.done +{}ms", System.currentTimeMillis() - t0);
             citationDtos = persistCitations(assistant.getId(), bundle.evidence());
         }
+        log.info("chat.ask.done +{}ms modelMs={}", System.currentTimeMillis() - t0,
+                Duration.between(started, Instant.now()).toMillis());
         return toResponse(assistant, citationDtos);
     }
 
@@ -242,9 +261,21 @@ private void autoTitle(Conversation conversation, String question) {
         rateLimiter.check("chat", user.userId().toString(), rateLimitProperties.chat());
     }
 
-private Message generate(UUID conversationId, GroundedPromptBuilder.PromptBundle bundle,
-                         Instant started) {
-        ChatResponse response = chatModel.call(bundle.prompt());
+    private Message generate(UUID conversationId, GroundedPromptBuilder.PromptBundle bundle,
+                             Instant started) {
+        long tg = System.currentTimeMillis();
+        log.info("chat.generate.modelCall.start conversation={} model={} promptMessages={}",
+                conversationId, aiProperties.chatModel(), bundle.prompt().getInstructions().size());
+        ChatResponse response;
+        try {
+            response = chatModel.call(bundle.prompt());
+        } catch (RuntimeException e) {
+            log.error("chat.generate.modelCall.failed after {}ms conversation={} type={} message={}",
+                    System.currentTimeMillis() - tg, conversationId,
+                    e.getClass().getName(), e.getMessage());
+            throw toProviderFailure(e);
+        }
+        log.info("chat.generate.modelCall.done elapsedMs={}", System.currentTimeMillis() - tg);
         String answer = response.getResult().getOutput().getText();
         long latencyMs = Duration.between(started, Instant.now()).toMillis();
 
@@ -383,19 +414,22 @@ private Message generate(UUID conversationId, GroundedPromptBuilder.PromptBundle
         if (error instanceof AppException app) {
             return app.code();
         }
-        String type = error.getClass().getName().toLowerCase(Locale.ROOT);
-        String message = error.getMessage() == null
-                ? "" : error.getMessage().toLowerCase(Locale.ROOT);
-        if (type.contains("timeout") || message.contains("timeout") || message.contains("timed out")) {
-            return ErrorCode.LLM_TIMEOUT;
+        return AiExceptions.classify(error);
+    }
+
+    /**
+     * Maps a provider failure to a stable, user-safe error. An
+     * {@link AppException} raised below is passed through unchanged; anything
+     * else (a bounded timeout, a rate limit, a 5xx) is classified by
+     * {@link AiExceptions} so the caller sees {@code LLM_TIMEOUT},
+     * {@code LLM_RATE_LIMITED} or {@code LLM_UNAVAILABLE} rather than a generic
+     * 500.
+     */
+    private static AppException toProviderFailure(RuntimeException error) {
+        if (error instanceof AppException app) {
+            return app;
         }
-        if (message.contains("rate") || message.contains("quota") || message.contains("429")) {
-            return ErrorCode.LLM_RATE_LIMITED;
-        }
-        if (type.contains("resourceaccess") || message.contains("unavailable")
-                || message.contains("503")) {
-            return ErrorCode.LLM_UNAVAILABLE;
-        }
-        return ErrorCode.INTERNAL_ERROR;
+        return new AppException(AiExceptions.classify(error),
+                "The answer could not be generated. Please try again.", error);
     }
 }

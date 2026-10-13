@@ -71,7 +71,7 @@ spring:
         api-key: ${GEMINI_API_KEY:}
         chat:
           options:
-            model: ${GEMINI_CHAT_MODEL:gemini-2.5-flash}
+            model: ${GEMINI_CHAT_MODEL:gemini-3.5-flash}
             # Low temperature: the model must faithfully restate evidence
             # rather than embellish it.
             temperature: 0.1
@@ -81,7 +81,7 @@ spring:
           api-key: ${GEMINI_API_KEY:}
           text:
             options:
-              model: ${GEMINI_EMBEDDING_MODEL:text-embedding-004}
+              model: ${GEMINI_EMBEDDING_MODEL:gemini-embedding-001}
               dimensions: ${GEMINI_EMBEDDING_DIMENSIONS:768}
               # Overridden per call: documents use RETRIEVAL_DOCUMENT and
               # queries use RETRIEVAL_QUERY.
@@ -124,7 +124,7 @@ veridoc:
     min-tokens: ${CHUNK_MIN_TOKENS:40}
 
   embedding:
-    model: ${GEMINI_EMBEDDING_MODEL:text-embedding-004}
+    model: ${GEMINI_EMBEDDING_MODEL:gemini-embedding-001}
     dimensions: ${GEMINI_EMBEDDING_DIMENSIONS:768}
     version: ${EMBEDDING_VERSION:1}
     batch-size: ${EMBEDDING_BATCH_SIZE:32}
@@ -145,12 +145,16 @@ veridoc:
     debug-enabled: ${RAG_DEBUG_ENABLED:false}
 
   ai:
-    chat-model: ${GEMINI_CHAT_MODEL:gemini-2.5-flash}
-    embedding-model: ${GEMINI_EMBEDDING_MODEL:text-embedding-004}
+    chat-model: ${GEMINI_CHAT_MODEL:gemini-3.5-flash}
+    embedding-model: ${GEMINI_EMBEDDING_MODEL:gemini-embedding-001}
     # Bounded retries with exponential backoff. Never retry indefinitely.
     max-attempts: ${AI_MAX_ATTEMPTS:3}
     initial-backoff: ${AI_INITIAL_BACKOFF:PT1S}
     max-backoff: ${AI_MAX_BACKOFF:PT20S}
+    # Hard ceiling per Gemini HTTP request. The google-genai SDK has no default
+    # timeout (zero == infinite), so this is what stops a silent connection from
+    # hanging a request thread forever.
+    request-timeout: ${AI_REQUEST_TIMEOUT:PT60S}
 
   rate-limit:
     enabled: ${RATE_LIMIT_ENABLED:true}

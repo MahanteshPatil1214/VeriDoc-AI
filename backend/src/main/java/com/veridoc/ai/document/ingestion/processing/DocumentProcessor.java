@@ -8,7 +8,6 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.embedding.EmbeddingModel;
-import org.springframework.ai.embedding.EmbeddingOptions;
 import org.springframework.ai.embedding.EmbeddingRequest;
 import org.springframework.ai.embedding.EmbeddingResponse;
 import org.springframework.scheduling.annotation.Async;
@@ -28,6 +27,7 @@ import com.veridoc.ai.document.persistence.DocumentRepository;
 import com.veridoc.ai.document.persistence.DocumentVersionRepository;
 import com.veridoc.ai.document.storage.LocalDocumentStorage;
 import com.veridoc.ai.infrastructure.config.AiConfig.EmbeddingDimensions;
+import com.veridoc.ai.infrastructure.config.EmbeddingOptionsFactory;
 import com.veridoc.ai.infrastructure.vector.PgVectorChunkRepository;
 
 /**
@@ -109,7 +109,7 @@ public class DocumentProcessor {
 
             String[] texts = chunks.stream().map(TokenChunker.Chunk::content).toArray(String[]::new);
             EmbeddingResponse response = embeddingModel.call(new EmbeddingRequest(Arrays.asList(texts),
-                    EmbeddingOptions.builder().model(embeddingProperties.model()).build()));
+                    EmbeddingOptionsFactory.forDocuments(embeddingProperties)));
             var embeddings = response.getResults();
             if (embeddings.size() != chunks.size()) {
                 throw new AppException(ErrorCode.DOCUMENT_PROCESSING_FAILED, "Embedding count mismatch");

@@ -31,7 +31,14 @@
     </springProfile>
 
     <springProfile name="!prod">
-        <if condition='property("logFormat").equals("json")'>
+        <!-- logback 1.5.37+ removed the Janino condition="..." attribute on
+             <if>; the replacement is a <condition> element (Janino-free) that
+             precedes <if>. Using the old attribute leaves the root logger with
+             no appenders, so the application logs nothing. -->
+        <condition class="ch.qos.logback.core.boolex.ExpressionPropertyCondition">
+            <expression>propertyEquals("logFormat","json")</expression>
+        </condition>
+        <if>
             <then>
                 <root level="INFO">
                     <appender-ref ref="JSON"/>

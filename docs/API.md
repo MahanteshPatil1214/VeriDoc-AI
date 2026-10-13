@@ -50,7 +50,7 @@ user's) resources are hidden as `404`, never `403`.
 | `EMBEDDING_FAILED` | 502 | Embedding model error |
 | `RETRIEVAL_FAILED` | 502 | Vector search failed |
 | `LLM_UNAVAILABLE` | 502 | Gemini unreachable |
-| `LLM_TIMEOUT` | 504 | Gemini exceeded `GEMINI_TIMEOUT` |
+| `LLM_TIMEOUT` | 504 | Gemini HTTP request timed out (provider unresponsive) |
 | `STREAM_INTERRUPTED` | 500 | Stream aborted mid-flight |
 | `INTERNAL_ERROR` | 500 | Catch-all |
 
@@ -198,7 +198,7 @@ updated `ConversationResponse`.
 {
   "messageId": "…", "conversationId": "…", "role": "assistant",
   "content": "The policy covers…",
-  "status": "COMPLETED", "model": "gemini-2.5-flash",
+  "status": "COMPLETED", "model": "gemini-3.5-flash",
   "promptTokens": 120, "completionTokens": 40, "totalTokens": 160, "latencyMs": 840,
   "createdAt": "…",
   "citations": [{
@@ -239,7 +239,7 @@ Failures emit a terminal `error` event (not an HTTP error mid-stream):
 
 ```
 event: error
-data: {"code":"LLM_TIMEOUT","message":"Gemini did not respond in time"}
+data: {"code":"LLM_TIMEOUT","message":"The answer could not be generated. Please try again."}
 ```
 
 Ownership/validation problems are still answered with a normal JSON `4xx`

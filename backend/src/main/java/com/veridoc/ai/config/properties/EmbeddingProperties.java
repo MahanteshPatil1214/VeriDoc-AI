@@ -12,7 +12,7 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 @ConfigurationProperties(prefix = "veridoc.embedding")
 public record EmbeddingProperties(
 
-        @DefaultValue("text-embedding-004") String model,
+        @DefaultValue("gemini-embedding-001") String model,
 
         @DefaultValue("768") int dimensions,
 
