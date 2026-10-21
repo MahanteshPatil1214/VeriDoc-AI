@@ -1,27 +1,27 @@
 :root {
-  /* palette — warm neutrals, single clay accent (Claude-inspired) */
-  --bg: #faf9f7;
-  --bg-subtle: #f2f0ec;
+  /* palette — modern, professional with subtle gradients */
+  --bg: radial-gradient(1200px 800px at 50% 0%, #f9fafb 0%, #f1f5f9 100%);
+  --bg-solid: #f8fafc;
+  --bg-subtle: rgba(255, 255, 255, 0.7);
   --surface: #ffffff;
-  --surface-hover: #f6f4f0;
-  --ink: #1a1a1a;
-  --ink-soft: #3d3a36;
-  --muted: #6f6a63;
-  --muted-2: #9a948b;
-  --border: #e7e3dc;
-  --border-strong: #d6d0c6;
-  --accent: #c06a45;
-  --accent-strong: #a65835;
-  --accent-weak: #f3e3d9;
-  --accent-ink: #8a4a2c;
-  --danger: #c23b2e;
-  --success: #3d7a47;
-  --shadow-soft: 0 1px 2px rgba(26, 26, 26, 0.05), 0 8px 24px rgba(26, 26, 26, 0.05);
+  --surface-hover: rgba(255, 255, 255, 0.95);
+  --ink: #0f172a;
+  --ink-soft: #334155;
+  --muted: #64748b;
+  --muted-2: #94a3b8;
+  --border: rgba(226, 232, 240, 0.8);
+  --border-strong: rgba(203, 213, 225, 0.9);
+  --accent: #4f46e5;
+  --accent-strong: #4338ca;
+  --accent-weak: rgba(79, 70, 229, 0.08);
+  --accent-ink: #3730a3;
+  --danger: #dc2626;
+  --success: #059669;
+  --shadow-soft: 0 1px 3px rgba(15, 23, 42, 0.08), 0 10px 40px -20px rgba(79, 70, 229, 0.4);
 
   /* typography */
-  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui,
-    Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --font-display: 'Georgia', 'Times New Roman', serif;
+  --font-body: 'Inter', 'Noto Sans', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, Roboto, 'Helvetica Neue', Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';
+  --font-display: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   --text-xs: 12px;
   --text-sm: 13px;
   --text-md: 15px;
