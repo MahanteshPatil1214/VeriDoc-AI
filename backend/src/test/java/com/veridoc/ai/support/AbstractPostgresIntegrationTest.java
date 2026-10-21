@@ -5,6 +5,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
@@ -46,8 +47,19 @@ public abstract class AbstractPostgresIntegrationTest {
             .withUsername("veridoc")
             .withPassword("veridoc");
 
+    /**
+     * Redis backs rate limiting and the actuator health indicator, so the
+     * integration context needs a real instance just like production. Keeping
+     * it in Testcontainers means the suite runs the same way on a laptop and in
+     * CI without an externally provisioned service.
+     */
+    protected static final GenericContainer<?> REDIS =
+            new GenericContainer<>(DockerImageName.parse("redis:7-alpine"))
+                    .withExposedPorts(6379);
+
     static {
         POSTGRES.start();
+        REDIS.start();
     }
 
     @DynamicPropertySource
@@ -55,6 +67,8 @@ public abstract class AbstractPostgresIntegrationTest {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
+        registry.add("spring.data.redis.url", () -> "redis://" + REDIS.getHost()
+                + ":" + REDIS.getMappedPort(6379));
         registry.add("spring.flyway.locations", () -> "classpath:db/migration");
         // A placeholder key so the AI auto-configuration can build its client
         // beans. No test in this suite calls Gemini or Groq; tests that need
