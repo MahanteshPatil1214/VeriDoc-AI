@@ -44,6 +44,6 @@ desktop.ini
 # ---- Local data ----
 /data/
 /backend/data/
-storage/
+/storage/
 *.log
 logs/
