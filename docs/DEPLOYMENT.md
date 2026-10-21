@@ -19,9 +19,11 @@ stack up; open <http://localhost:8081>.
 ## Prerequisites
 
 - Docker Engine 24+ / Docker Desktop with Compose v2.
-- A Google Gemini API key (`GEMINI_API_KEY`). Embeddings and answers are real —
-  ingestion fails at EXTRACTING/EMBEDDING without a working key, so verified
-  document-grounded answers depend on it.
+- A Groq API key (`GROQ_API_KEY`) for chat and a Google Gemini API key
+  (`GEMINI_API_KEY`) for embeddings. Both are real calls: ingestion fails at
+  EXTRACTING/EMBEDDING without a working Gemini key, and chat fails with
+  `LLM_*` errors without a Groq key, so verified document-grounded answers
+  depend on both.
 
 ## Environment variables
 
@@ -29,6 +31,7 @@ Copy `.env.example` to `.env`. Required, no sensible default:
 
 | Variable | Notes |
 | --- | --- |
+| `GROQ_API_KEY` | Backend only; never exposed to the client |
 | `GEMINI_API_KEY` | Backend only; never exposed to the client |
 | `JWT_SECRET` | ≥ 32 bytes; `openssl rand -base64 48` |
 | `DATABASE_PASSWORD` | Used for the `veridoc` Postgres role |
@@ -69,8 +72,9 @@ Notable knobs: `MAX_FILE_SIZE_BYTES` / `MAX_PDF_PAGES` (upload caps),
   (a container only becomes `healthy`, and only starts satisfying
   `depends_on: service_healthy`, when Flyway migrations are done — so the
   frontend never boots against an un-migrated database).
-- **Graceful degradation**: if Gemini is down, chat fails with stable error
-  codes (`LLM_UNAVAILABLE`, `LLM_TIMEOUT`) rather than a partial answer.
+- **Graceful degradation**: if an AI provider is down (Groq for chat, Gemini
+  for embeddings), the request fails with stable error codes
+  (`LLM_UNAVAILABLE`, `LLM_TIMEOUT`) rather than a partial answer.
 
 ## Operational notes
 
@@ -86,7 +90,8 @@ Notable knobs: `MAX_FILE_SIZE_BYTES` / `MAX_PDF_PAGES` (upload caps),
 
 ## Day-2 checklist
 
-1. Put a real `GEMINI_API_KEY` and a freshly generated `JWT_SECRET` in `.env`;
+1. Put real `GROQ_API_KEY` and `GEMINI_API_KEY` values and a freshly generated
+   `JWT_SECRET` in `.env`;
    never commit `.env`.
 2. `docker compose up -d --build`, wait for 4 `healthy` services.
 3. Upload a real PDF, wait for `READY`, attach it, and ask a question it can

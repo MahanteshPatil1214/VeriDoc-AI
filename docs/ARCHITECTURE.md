@@ -27,12 +27,13 @@ rather than inventing an answer.
                           │  + pgvector   │     │ rate-limit        │
                           │  (source of   │     │ counters only     │
                           │   truth)      │     └───────────────────┘
-                          └──────┬────────┘
-                                 │ embeddings ·
-                          ┌──────▼────────┐
-                          │ Google Gemini │
-                          │ chat + embed  │
-                          └───────────────┘
+                          └──────┬───────────────────────┬──────────────┘
+                                 │ embeddings            │ chat
+                          ┌──────▼────────┐       ┌──────▼────────┐
+                          │ Google Gemini │       │ Groq          │
+                          │ embeddings    │       │ chat          │
+                          └───────────────┘       └───────────────┘
+
 ```
 
 Two independent "sides" meet in the RAG service:
@@ -68,7 +69,7 @@ Spring Boot 4.1 monolith. Packages by aggregate:
 - `auth` — registration, login, refresh, `/me`. JWT (access + rotating refresh).
 - `document` — upload, listing, status, delete, retry; the ingestion pipeline.
 - `conversation` — threads, attach/detach, message history, rename, delete.
-- `rag` — retrieval, prompt assembly, Gemini calls, citations, admin debugger.
+- `rag` — retrieval, prompt assembly, LLM calls, citations, admin debugger.
 - `security` — JWT filter, current-user resolution, rate limiting.
 - `monitoring` — actuator health/readiness/metrics.
 - `common` — error taxonomy (`ErrorCode`) and `AppException`.
@@ -80,11 +81,14 @@ Spring Boot 4.1 monolith. Packages by aggregate:
   citations, feedback. Flyway manages schema.
 - **Redis** holds only rate-limit counters (`noeviction`, no persistence).
 
-### Google Gemini
+### AI providers (Groq + Google Gemini)
 
-- Chat model: `gemini-3.5-flash` for grounded answers.
-- Embedding model: `gemini-embedding-001`, 768 dimensions, batch-embedded.
-- The API key lives only in backend environment variables.
+- **Chat** (grounded answers and query rewriting): Groq, an OpenAI-compatible
+  API, model `openai/gpt-oss-120b` through Spring AI's OpenAI integration.
+- **Embeddings**: Google Gemini `gemini-embedding-001`, 768 dimensions,
+  batch-embedded. The pgvector index is pinned to this embedding space.
+- Both API keys live only in backend environment variables; the providers are
+  selected per modality via `spring.ai.model.chat` / `spring.ai.model.embedding`.
 
 ## Document ingestion pipeline
 
@@ -130,7 +134,8 @@ State machine facts that matter:
    dropped.
 3. The prompt is assembled from retrieved chunks (untrusted data) and history,
    bounded by `RAG_MAX_CONTEXT_TOKENS`.
-4. Gemini answers; only chunks actually cited are emitted as citations.
+4. The chat model (Groq) answers; only chunks actually cited are emitted as
+   citations.
 
 If no chunk clears the score threshold, or the model cannot ground an answer in
 the context, the reply is `RagProperties.noEvidenceAnswer()` — the explicit no-
@@ -171,7 +176,7 @@ Failures arrive as a terminal `error` event with a stable `code`.
 
 - **Integration tests** (`*IT.java`, Testcontainers) boot the real application
   against a throwaway pgvector container (`AbstractPostgresIntegrationTest`)
-  and drive it through `MockMvc` with a deterministic Gemini stub
+  and drive it through `MockMvc` with deterministic chat/embedding stubs
   (`IngestionTestConfig` + `TestPdfs`).
 - Boundaries covered: auth, ownership isolation, upload/file-security,
   document lifecycle (delete/retry), chat + streaming contract, prompt
@@ -181,7 +186,7 @@ Failures arrive as a terminal `error` event with a stable `code`.
 
 ## Cross-cutting choices
 
-- **No client-side secrets**: the Gemini key is backend-only.
+- **No client-side secrets**: the Groq and Gemini keys are backend-only.
 - **NGINX eliminates CORS**: the SPA talks to `/api` on its own origin.
 - **Deterministic config**: env-driven (`RagProperties`, generation props), no
   per-deploy code edits.

@@ -62,21 +62,49 @@ spring:
       connect-timeout: 2s
 
   ai:
+    # Groq serves chat (OpenAI-compatible API); Google Gemini serves
+    # embeddings. Spring AI 2.x selects one provider per modality through
+    # these properties: any value other than a provider's name switches that
+    # provider's auto-configuration off, so exactly one ChatModel and one
+    # EmbeddingModel come up. Embeddings deliberately stay on Gemini: the
+    # vector index is pinned to gemini-embedding-001's embedding space and
+    # Groq offers no embedding API.
+    model:
+      chat: openai
+      embedding: google-genai
+      # Modalities this application never uses. Left at their defaults they
+      # would each build their own Groq client at startup.
+      image: none
+      moderation: none
+      audio:
+        speech: none
+        transcription: none
+    openai:
+      # Read only by the backend. Never exposed to the browser. Groq's API is
+      # OpenAI-compatible, so the OpenAI starter is pointed at Groq's endpoint.
+      api-key: ${GROQ_API_KEY:}
+      base-url: https://api.groq.com/openai/v1
+      # Hard per-request ceiling for chat calls, driven by the same knob as
+      # the Gemini embedding client (veridoc.ai.request-timeout). Without it
+      # a silent connection can block a request thread indefinitely.
+      timeout: ${AI_REQUEST_TIMEOUT:PT60S}
+      # Chat calls run through the official OpenAI SDK, which owns its own
+      # retries (initial + 2 with exponential backoff == the attempt budget of
+      # veridoc.ai.max-attempts). Kept small so the worst-case wait stays
+      # bounded and predictable.
+      max-retries: 2
+      chat:
+        model: ${GROQ_CHAT_MODEL:openai/gpt-oss-120b}
+        # Low temperature: the model must faithfully restate evidence
+        # rather than embellish it.
+        temperature: 0.1
+        max-tokens: ${GROQ_MAX_OUTPUT_TOKENS:2048}
+        top-p: 0.95
     google:
       genai:
-        # Read only by the backend. Never exposed to the browser.
-        # Spring AI 2.x declares the chat connection at this prefix and the
-        # embedding connection under ...genai.embedding, so the key is set in
-        # both places.
-        api-key: ${GEMINI_API_KEY:}
-        chat:
-          options:
-            model: ${GEMINI_CHAT_MODEL:gemini-3.5-flash}
-            # Low temperature: the model must faithfully restate evidence
-            # rather than embellish it.
-            temperature: 0.1
-            max-output-tokens: ${GEMINI_MAX_OUTPUT_TOKENS:2048}
-            top-p: 0.95
+        # Read only by the backend. Never exposed to the browser. The chat
+        # auto-configuration is switched off above (spring.ai.model.chat),
+        # so this prefix feeds the embedding connection only.
         embedding:
           api-key: ${GEMINI_API_KEY:}
           text:
@@ -145,7 +173,7 @@ veridoc:
     debug-enabled: ${RAG_DEBUG_ENABLED:false}
 
   ai:
-    chat-model: ${GEMINI_CHAT_MODEL:gemini-3.5-flash}
+    chat-model: ${GROQ_CHAT_MODEL:openai/gpt-oss-120b}
     embedding-model: ${GEMINI_EMBEDDING_MODEL:gemini-embedding-001}
     # Bounded retries with exponential backoff. Never retry indefinitely.
     max-attempts: ${AI_MAX_ATTEMPTS:3}

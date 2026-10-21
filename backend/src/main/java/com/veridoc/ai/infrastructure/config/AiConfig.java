@@ -30,12 +30,17 @@ public class AiConfig {
     /**
      * Bounded retries with exponential backoff for transient provider failures.
      *
-     * <p>Spring AI's Gemini model consumes
+     * <p>Spring AI's Gemini embedding model consumes
      * {@code org.springframework.core.retry.RetryTemplate} (Spring Framework 7),
      * not the legacy Spring Retry type, so this is the template actually applied
-     * to the chat and embedding calls. The auto-configured template only retries
+     * to the embedding calls. The auto-configured template only retries
      * {@code TransientAiException}, which the Gemini model never raises, so
      * without this bean provider failures would never be retried.
+     *
+     * <p>Chat calls go to Groq through the official OpenAI SDK, whose model
+     * takes no {@code RetryTemplate}: those retries are bounded by
+     * {@code spring.ai.openai.max-retries} instead. {@link AiExceptions}
+     * classifies failures from both transports.
      *
      * <p>The predicate is deliberately narrow: only timeouts, rate limits and
      * 5xx-class failures are retried (see {@link AiExceptions#isTransient}).

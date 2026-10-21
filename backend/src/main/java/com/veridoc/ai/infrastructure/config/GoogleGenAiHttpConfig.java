@@ -10,17 +10,21 @@ import com.google.genai.types.HttpRetryOptions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.google.genai.embedding.GoogleGenAiEmbeddingConnectionDetails;
-import org.springframework.ai.model.google.genai.autoconfigure.chat.GoogleGenAiConnectionProperties;
 import org.springframework.ai.model.google.genai.autoconfigure.embedding.GoogleGenAiEmbeddingConnectionProperties;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.Resource;
+import org.springframework.util.StringUtils;
 
 import com.veridoc.ai.config.properties.AiProperties;
 
 /**
  * Bounds every Gemini HTTP call.
+ *
+ * <p>Chat was moved to Groq (an OpenAI-compatible endpoint selected via
+ * {@code spring.ai.model.chat=openai}); Gemini now serves embeddings only, and
+ * this client exists for that path.
  *
  * <p>The google-genai SDK derives its connect/read/write timeouts from
  * {@link HttpOptions#timeout()} and leaves all three at zero when it is unset,
@@ -37,7 +41,10 @@ import com.veridoc.ai.config.properties.AiProperties;
  *
  * <p>Defining a {@link Client} bean makes the embedding auto-configuration back
  * off, so the embedding connection details are provided explicitly and reuse
- * the same timed client.
+ * the same timed client. The connection properties are the
+ * {@code spring.ai.google.genai.embedding.*} ones: the chat-level properties
+ * ({@code spring.ai.google.genai.*}) are no longer registered once the chat
+ * auto-configuration is switched off.
  */
 @Configuration(proxyBeanMethods = false)
 public class GoogleGenAiHttpConfig {
@@ -53,11 +60,11 @@ public class GoogleGenAiHttpConfig {
 
     @Bean
     @ConditionalOnMissingBean(Client.class)
-    Client googleGenAiClient(GoogleGenAiConnectionProperties connection, AiProperties aiProperties)
-            throws IOException {
+    Client googleGenAiClient(GoogleGenAiEmbeddingConnectionProperties connection,
+            AiProperties aiProperties) throws IOException {
         Client.Builder builder = Client.builder().httpOptions(httpOptions(aiProperties));
-        log.info("Gemini client configured: requestTimeout={}ms, sdkRetries=1 (application RetryTemplate"
-                + " owns retries), vertexAi={}", aiProperties.requestTimeout().toMillis(),
+        log.info("Gemini embedding client configured: requestTimeout={}ms, sdkRetries=1 (application"
+                + " RetryTemplate owns retries), vertexAi={}", aiProperties.requestTimeout().toMillis(),
                 connection.isVertexAi());
         if (connection.isVertexAi()) {
             builder.vertexAI(true);
@@ -73,7 +80,10 @@ public class GoogleGenAiHttpConfig {
                     builder.credentials(GoogleCredentials.fromStream(in));
                 }
             }
-        } else {
+        } else if (StringUtils.hasText(connection.getApiKey())) {
+            // Mirrors the upstream auto-configuration: a blank key must not be
+            // passed to the SDK, which would fail later with an opaque error
+            // instead of the readiness probe's actionable message.
             builder.apiKey(connection.getApiKey());
         }
         return builder.build();

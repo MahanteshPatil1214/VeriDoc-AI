@@ -10,7 +10,8 @@ uploaded documents to answer that."_
 
 ## What it is
 
-- Multi-user RAG platform backed by **PostgreSQL + pgvector** and **Google Gemini**.
+- Multi-user RAG platform backed by **PostgreSQL + pgvector**, **Groq** (chat)
+  and **Google Gemini** (embeddings).
 - Upload one or more PDFs; each is extracted, chunked and embedded asynchronously.
 - Attach documents to a conversation and ask multi-turn questions with **streamed**
   answers and **source citations** (page, section, quoted text).
@@ -29,15 +30,16 @@ uploaded documents to answer that."_
 | Backend   | Java 21, Spring Boot 4.1, Spring AI, WebFlux (streaming) |
 | Database  | PostgreSQL 17 + pgvector |
 | Cache     | Redis 7 (rate-limit counters) |
-| AI        | Google Gemini (chat + embeddings) |
+| AI        | Groq (chat), Google Gemini (embeddings) |
 | Infra     | Docker Compose, nginx (frontend), multi-stage images |
 
 ## Quick start (Docker Compose)
 
-Prerequisites: Docker Desktop (or equivalent), a [Google Gemini API key](https://aistudio.google.com).
+Prerequisites: Docker Desktop (or equivalent), a [Groq API key](https://console.groq.com/keys)
+for chat and a [Google Gemini API key](https://aistudio.google.com) for embeddings.
 
 ```bash
-cp .env.example .env        # then fill in GEMINI_API_KEY and JWT_SECRET
+cp .env.example .env        # then fill in GROQ_API_KEY, GEMINI_API_KEY and JWT_SECRET
 docker compose up -d --build
 ```
 
@@ -45,8 +47,8 @@ Open <http://localhost:8081>. The stack starts Postgres + pgvector, Redis, the
 backend (port 8080) and the nginx-served frontend (port 8081). nginx proxies
 `/api` to the backend on the same origin, so no CORS configuration is involved.
 
-> The Gemini key is backend-only: it is required for vector embeddings and
-> answer generation, and it is never exposed to the browser.
+> Both AI keys are backend-only: Groq serves answer generation, Gemini serves
+> vector embeddings, and neither is ever exposed to the browser.
 
 ## Local development
 
@@ -72,8 +74,8 @@ mvn verify                       # unit + integration tests (Testcontainers)
 cd frontend && npm run lint && npm run build
 ```
 
-Integration tests use a disposable pgvector container and a deterministic
-Gemini stub — no external API calls, no real PDFs required.
+Integration tests use a disposable pgvector container and deterministic
+Gemini/Groq stubs — no external API calls, no real PDFs required.
 
 ## Documentation
 

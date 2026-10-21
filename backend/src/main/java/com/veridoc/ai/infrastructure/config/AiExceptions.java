@@ -4,6 +4,11 @@ import java.util.concurrent.TimeoutException;
 
 import com.google.genai.errors.ApiException;
 import com.google.genai.errors.GenAiIOException;
+import com.openai.errors.OpenAIIoException;
+import com.openai.errors.OpenAIRetryableException;
+import com.openai.errors.OpenAIServiceException;
+import org.springframework.ai.retry.NonTransientAiException;
+import org.springframework.ai.retry.TransientAiException;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.ResourceAccessException;
@@ -13,11 +18,24 @@ import org.springframework.web.client.ResourceAccessException;
  * permanent (retrying cannot succeed). Retries are always bounded by
  * {@code veridoc.ai.max-attempts}.
  *
- * <p>Both Spring's {@link HttpStatusCodeException} and the google-genai SDK's
- * {@link ApiException} are recognised, so the classification does not depend on
- * which transport raised the failure. The SDK's {@link GenAiIOException} wraps
- * transport-level faults (including the read timeouts configured for
- * {@code Client} in {@link GoogleGenAiHttpConfig}).
+ * <p>Both transports in use are recognised, so the classification does not
+ * depend on which provider raised the failure:
+ *
+ * <ul>
+ * <li>Gemini embeddings via the google-genai SDK — {@link ApiException} for
+ * HTTP failures and {@link GenAiIOException} for transport-level faults
+ * (including the read timeouts configured for {@code Client} in
+ * {@link GoogleGenAiHttpConfig}).</li>
+ * <li>Groq chat via the official OpenAI SDK — {@link OpenAIServiceException}
+ * (and subclasses such as {@code RateLimitException}) for HTTP failures,
+ * {@link OpenAIIoException} for transport faults, and
+ * {@link OpenAIRetryableException} when the SDK's own bounded retries are
+ * exhausted.</li>
+ * </ul>
+ *
+ * <p>Spring's {@link HttpStatusCodeException} and the Spring AI retry
+ * exceptions are handled as well, because intermediate layers may wrap the
+ * provider failure in either.
  */
 public final class AiExceptions {
 
@@ -48,6 +66,28 @@ public final class AiExceptions {
             }
             if (t instanceof GenAiIOException) {
                 // Failing to talk to the provider at all is worth another try.
+                return true;
+            }
+            if (t instanceof OpenAIServiceException service) {
+                int code = service.statusCode();
+                if (code == 429 || (code >= 500 && code < 600)) {
+                    return true;
+                }
+            }
+            if (t instanceof OpenAIRetryableException) {
+                // The SDK already retried this within its own bounded budget
+                // and the provider still reported a retryable condition.
+                return true;
+            }
+            if (t instanceof OpenAIIoException) {
+                // Transport-level failure talking to Groq: worth another try.
+                return true;
+            }
+            if (t instanceof NonTransientAiException) {
+                // Classified permanent upstream: retrying cannot succeed.
+                return false;
+            }
+            if (t instanceof TransientAiException) {
                 return true;
             }
             if (t instanceof ResourceAccessException) {
@@ -82,6 +122,14 @@ public final class AiExceptions {
                     return com.veridoc.ai.common.error.ErrorCode.LLM_RATE_LIMITED;
                 }
                 if (api.code() >= 500) {
+                    return com.veridoc.ai.common.error.ErrorCode.LLM_UNAVAILABLE;
+                }
+            }
+            if (t instanceof OpenAIServiceException service) {
+                if (service.statusCode() == 429) {
+                    return com.veridoc.ai.common.error.ErrorCode.LLM_RATE_LIMITED;
+                }
+                if (service.statusCode() >= 500) {
                     return com.veridoc.ai.common.error.ErrorCode.LLM_UNAVAILABLE;
                 }
             }

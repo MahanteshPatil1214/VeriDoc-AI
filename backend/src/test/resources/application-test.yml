@@ -5,14 +5,15 @@ spring:
       maximum-pool-size: 5
 
   ai:
+    openai:
+      # Tests never call Groq; the key exists so the OpenAI-compatible
+      # auto-configuration can build its beans.
+      api-key: test-key-not-used
     google:
       genai:
-        # Tests never call Gemini; the key exists so the AI auto-configuration
-        # can build its beans. Overridden per test where a stub is required.
-        api-key: test-key-not-used
-        chat:
-          client:
-            request-timeout: 2s
+        embedding:
+          # Tests never call Gemini; same reasoning as above.
+          api-key: test-key-not-used
 
 veridoc:
   jwt:

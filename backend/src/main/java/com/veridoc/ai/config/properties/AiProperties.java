@@ -12,7 +12,7 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 @ConfigurationProperties(prefix = "veridoc.ai")
 public record AiProperties(
 
-        @DefaultValue("gemini-3.5-flash") String chatModel,
+        @DefaultValue("openai/gpt-oss-120b") String chatModel,
 
         @DefaultValue("gemini-embedding-001") String embeddingModel,
 

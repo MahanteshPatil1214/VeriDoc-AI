@@ -138,7 +138,14 @@
             <artifactId>micrometer-registry-prometheus</artifactId>
         </dependency>
 
-        <!-- AI: Gemini chat + embeddings -->
+        <!-- AI: Groq chat (OpenAI-compatible endpoint) + Gemini embeddings -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-model-openai</artifactId>
+        </dependency>
+        <!-- Kept for the google-genai connection/SDK types the embedding side
+             (and GoogleGenAiHttpConfig) compile against; chat auto-configuration
+             is switched off via spring.ai.model.chat=openai. -->
         <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-starter-model-google-genai</artifactId>

@@ -21,7 +21,7 @@ import com.veridoc.ai.config.properties.AiProperties;
 class AiRetryTemplateTest {
 
     private final AiProperties properties = new AiProperties(
-            "gemini-3.5-flash",
+            "openai/gpt-oss-120b",
             "gemini-embedding-001",
             3,
             Duration.ofMillis(1),

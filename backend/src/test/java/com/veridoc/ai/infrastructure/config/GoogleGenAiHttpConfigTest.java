@@ -19,7 +19,7 @@ class GoogleGenAiHttpConfigTest {
     @Test
     void appliesTimeoutInMillisAndDisablesSdkRetries() {
         AiProperties properties = new AiProperties(
-                "gemini-3.5-flash",
+                "openai/gpt-oss-120b",
                 "gemini-embedding-001",
                 3,
                 Duration.ofSeconds(1),

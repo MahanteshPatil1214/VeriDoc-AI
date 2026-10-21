@@ -45,12 +45,12 @@ user's) resources are hidden as `404`, never `403`.
 | `CONFLICT` | 409 | General conflict (e.g. retry a non-failed doc) |
 | `UNAUTHORIZED_DOCUMENT` | 403 | Result references a document user lost access to |
 | `RATE_LIMIT_EXCEEDED` | 429 | Bucket exhausted |
-| `LLM_RATE_LIMITED` | 429 | Gemini throttled |
+| `LLM_RATE_LIMITED` | 429 | LLM provider (Groq) throttled |
 | `DOCUMENT_PROCESSING_FAILED` | 500 | Ingestion pipeline failed |
 | `EMBEDDING_FAILED` | 502 | Embedding model error |
 | `RETRIEVAL_FAILED` | 502 | Vector search failed |
-| `LLM_UNAVAILABLE` | 502 | Gemini unreachable |
-| `LLM_TIMEOUT` | 504 | Gemini HTTP request timed out (provider unresponsive) |
+| `LLM_UNAVAILABLE` | 502 | LLM provider (Groq) unreachable |
+| `LLM_TIMEOUT` | 504 | LLM HTTP request timed out (provider unresponsive) |
 | `STREAM_INTERRUPTED` | 500 | Stream aborted mid-flight |
 | `INTERNAL_ERROR` | 500 | Catch-all |
 
@@ -198,7 +198,7 @@ updated `ConversationResponse`.
 {
   "messageId": "…", "conversationId": "…", "role": "assistant",
   "content": "The policy covers…",
-  "status": "COMPLETED", "model": "gemini-3.5-flash",
+  "status": "COMPLETED", "model": "openai/gpt-oss-120b",
   "promptTokens": 120, "completionTokens": 40, "totalTokens": 160, "latencyMs": 840,
   "createdAt": "…",
   "citations": [{

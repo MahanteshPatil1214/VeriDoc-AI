@@ -57,10 +57,10 @@ public abstract class AbstractPostgresIntegrationTest {
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add("spring.flyway.locations", () -> "classpath:db/migration");
         // A placeholder key so the AI auto-configuration can build its client
-        // beans. No test in this suite calls Gemini; tests that need generation
-        // replace the chat/embedding models explicitly.
-        registry.add("spring.ai.google.genai.api-key", () -> "test-key-not-used");
+        // beans. No test in this suite calls Gemini or Groq; tests that need
+        // generation replace the chat/embedding models explicitly.
         registry.add("spring.ai.google.genai.embedding.api-key", () -> "test-key-not-used");
+        registry.add("spring.ai.openai.api-key", () -> "test-key-not-used");
         registry.add("veridoc.rate-limit.enabled", () -> "false");
     }
 

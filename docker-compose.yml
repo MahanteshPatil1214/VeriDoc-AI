@@ -1,6 +1,6 @@
 # ---- VeriDoc AI :: local development stack ----
 # Postgres (pgvector) + Redis + the backend. Copy .env.example to .env first:
-#   cp .env.example .env   then fill in GEMINI_API_KEY and JWT_SECRET.
+#   cp .env.example .env   then fill in GROQ_API_KEY, GEMINI_API_KEY and JWT_SECRET.
 #
 # Note the host-side overrides below: inside the compose network services are
 # reachable by service name, not via localhost, so DATABASE_URL and REDIS_URL
@@ -70,7 +70,9 @@ services:
       REDIS_URL: redis://redis:6379
       STORAGE_ROOT: /app/data/storage
       # Passed explicitly: env_file alone does not override these, and the
-      # api-key is required by Spring AI's Google GenAI connection beans.
+      # keys are required by Spring AI's connection beans (Groq for chat,
+      # Gemini for embeddings).
+      GROQ_API_KEY: ${GROQ_API_KEY:?GROQ_API_KEY is required}
       GEMINI_API_KEY: ${GEMINI_API_KEY:?GEMINI_API_KEY is required}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
     env_file:

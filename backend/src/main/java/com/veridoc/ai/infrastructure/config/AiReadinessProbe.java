@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
+import com.veridoc.ai.config.properties.AiProperties;
 import com.veridoc.ai.config.properties.EmbeddingProperties;
 
 import jakarta.annotation.PostConstruct;
@@ -12,11 +13,12 @@ import jakarta.annotation.PostConstruct;
 /**
  * Fails fast, at startup, when the AI layer cannot be configured.
  *
- * <p>Spring AI's own failure ("Google GenAI project-id must be set!") is
- * technically accurate but useless to an operator. This probe reports the
- * actual cause: a missing API key.
+ * <p>Chat and embeddings come from different providers (Groq and Gemini), so
+ * each has its own key and its own failure mode. Spring AI's own failure
+ * ("Could not resolve placeholder 'GROQ_API_KEY'" or similar) is technically
+ * accurate but useless to an operator; this probe reports the actual cause.
  *
- * <p>The Gemini key is never logged; only its presence is reported.
+ * <p>Neither provider key is ever logged; only its presence is reported.
  */
 @Component
 public class AiReadinessProbe {
@@ -26,13 +28,16 @@ public class AiReadinessProbe {
     private final ObjectProvider<org.springframework.ai.embedding.EmbeddingModel> embeddingModel;
     private final ObjectProvider<org.springframework.ai.chat.model.ChatModel> chatModel;
     private final EmbeddingProperties embeddingProperties;
+    private final AiProperties aiProperties;
 
     public AiReadinessProbe(ObjectProvider<org.springframework.ai.embedding.EmbeddingModel> embeddingModel,
                             ObjectProvider<org.springframework.ai.chat.model.ChatModel> chatModel,
-                            EmbeddingProperties embeddingProperties) {
+                            EmbeddingProperties embeddingProperties,
+                            AiProperties aiProperties) {
         this.embeddingModel = embeddingModel;
         this.chatModel = chatModel;
         this.embeddingProperties = embeddingProperties;
+        this.aiProperties = aiProperties;
     }
 
     @PostConstruct
@@ -41,29 +46,28 @@ public class AiReadinessProbe {
         boolean chatAvailable = chatModel.getIfAvailable() != null;
 
         if (!embeddingsAvailable || !chatAvailable) {
-            String key = System.getenv("GEMINI_API_KEY");
-            boolean keyPresent = key != null && !key.isBlank();
-
-            if (!keyPresent) {
-                throw new IllegalStateException(String.join("\n",
-                        "Gemini is not configured.",
-                        "",
-                        "Set the GEMINI_API_KEY environment variable (or Spring property",
-                        "spring.ai.google.genai.api-key) before starting the backend.",
-                        "",
-                        "The key is read on the backend only and is never exposed to the frontend.",
-                        "",
-                        "Missing components:",
-                        embeddingsAvailable ? "  - none" : "  - EmbeddingModel",
-                        chatAvailable ? "  - none" : "  - ChatModel"));
+            StringBuilder missing = new StringBuilder();
+            if (!embeddingsAvailable) {
+                missing.append("  - EmbeddingModel (Gemini): requires GEMINI_API_KEY")
+                        .append(System.lineSeparator());
             }
-            throw new IllegalStateException(
-                    "Gemini API key is present but the AI clients could not be created. "
-                            + "Verify the key is valid and that the configured models exist.");
+            if (!chatAvailable) {
+                missing.append("  - ChatModel (Groq): requires GROQ_API_KEY")
+                        .append(System.lineSeparator());
+            }
+
+            throw new IllegalStateException(String.join("\n",
+                    "The AI layer is not fully configured.",
+                    "",
+                    "Missing components:",
+                    missing.toString().stripTrailing(),
+                    "",
+                    "Both keys are read on the backend only and are never exposed",
+                    "to the frontend."));
         }
 
-        log.info("AI layer ready: chat model and embedding model '{}' ({} dimensions, v{})",
-                embeddingProperties.model(), embeddingProperties.dimensions(),
-                embeddingProperties.version());
+        log.info("AI layer ready: Groq chat '{}' + Gemini embedding '{}' ({} dimensions, v{})",
+                aiProperties.chatModel(), embeddingProperties.model(),
+                embeddingProperties.dimensions(), embeddingProperties.version());
     }
 }

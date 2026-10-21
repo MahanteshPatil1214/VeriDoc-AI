@@ -70,8 +70,8 @@ class RateLimitIT {
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add("spring.flyway.locations", () -> "classpath:db/migration");
-        registry.add("spring.ai.google.genai.api-key", () -> "test-key-not-used");
         registry.add("spring.ai.google.genai.embedding.api-key", () -> "test-key-not-used");
+        registry.add("spring.ai.openai.api-key", () -> "test-key-not-used");
         registry.add("spring.data.redis.url",
                 () -> "redis://" + REDIS.getHost() + ":" + REDIS.getMappedPort(6379));
         registry.add("veridoc.rate-limit.enabled", () -> "true");
