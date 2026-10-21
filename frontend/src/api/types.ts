@@ -100,6 +100,15 @@ export interface UploadResponse {
 
 // ---- messages / chat ----
 
+export type FeedbackRating = 'UP' | 'DOWN'
+
+export interface FeedbackResponse {
+  id: string
+  messageId: string
+  rating: FeedbackRating
+  comment: string | null
+}
+
 export interface Message {
   id: string
   role: string
@@ -108,6 +117,9 @@ export interface Message {
   createdAt: string
   /** Citations are attached while streaming; the history feed does not include them. */
   citations?: Citation[]
+  /** The caller's own rating of this assistant answer, if any. */
+  feedback?: FeedbackRating | null
+  feedbackComment?: string | null
 }
 
 export interface Citation {

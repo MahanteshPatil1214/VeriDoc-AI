@@ -1,6 +1,7 @@
 package com.veridoc.ai.message.persistence;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.data.domain.Pageable;
@@ -17,6 +18,9 @@ public interface MessageRepository extends JpaRepository<Message, UUID> {
      * conversation id that the service has already ownership-checked.
      */
     List<Message> findByConversationIdOrderByCreatedAtAsc(UUID conversationId, Pageable pageable);
+
+    /** Scoped lookup: a message is only addressable through its own conversation. */
+    Optional<Message> findByIdAndConversationId(UUID id, UUID conversationId);
 
     /** Most recent messages, newest-first, used to build the prompt window. */
     @Query("""

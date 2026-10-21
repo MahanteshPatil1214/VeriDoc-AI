@@ -24,7 +24,7 @@ public class Feedback {
     private UUID userId;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "rating", nullable = false, updatable = false, length = 16)
+    @Column(name = "rating", nullable = false, length = 16)
     private FeedbackRating rating;
 
     @Column(name = "comment", length = 2000)
@@ -45,6 +45,12 @@ public class Feedback {
         feedback.rating = rating;
         feedback.comment = comment == null || comment.isBlank() ? null : comment.strip();
         return feedback;
+    }
+
+    /** Re-rating the same answer replaces the previous rating and comment. */
+    public void update(FeedbackRating rating, String comment) {
+        this.rating = rating;
+        this.comment = comment == null || comment.isBlank() ? null : comment.strip();
     }
 
     public UUID getId() {

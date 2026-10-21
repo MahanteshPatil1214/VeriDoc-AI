@@ -102,7 +102,13 @@ class ChatRagIT extends AbstractPostgresIntegrationTest {
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
-        assertThat(objectMapper.readTree(messagesBody).size()).isEqualTo(2);
+        JsonNode history = objectMapper.readTree(messagesBody);
+        assertThat(history.size()).isEqualTo(2);
+        // Sources must survive a reload: the history feed carries the citations.
+        JsonNode historyAnswer = history.get(1);
+        assertThat(historyAnswer.get("role").asText()).isEqualTo("ASSISTANT");
+        assertThat(historyAnswer.get("citations").get(0).get("documentFilename").asText())
+                .isEqualTo("contract.pdf");
 
         String detailBody = mockMvc.perform(get("/api/v1/conversations/{id}", conversationId)
                         .header("Authorization", "Bearer " + token))

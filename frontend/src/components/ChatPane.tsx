@@ -201,7 +201,11 @@ function Thread({ conversationId }: { conversationId: string }) {
           </div>
         )}
         {messages.map((message) => (
-          <MessageRow key={`${conversationId}-${message.id}`} message={message} />
+          <MessageRow
+            key={`${conversationId}-${message.id}`}
+            message={message}
+            conversationId={conversationId}
+          />
         ))}
         {busy && draftAssistant?.content.length === 0 && (
           <div className="msg msg-assistant">

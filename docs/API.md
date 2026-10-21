@@ -232,10 +232,38 @@ When no supporting evidence is found, `content` is the no-evidence refusal:
 ### `GET /conversations/{id}/messages` — history → 200
 
 ```json
-[{ "id": "…", "role": "user", "content": "…", "status": "…", "createdAt": "…" }]
+[{
+  "id": "…", "role": "USER", "content": "…", "status": "COMPLETE", "createdAt": "…",
+  "feedback": "UP", "feedbackComment": "Clear and cited."
+}]
 ```
 
-(No citations in the history feed.)
+Each assistant message carries its persisted `citations` (same shape as the ask
+response), so sources survive a page reload. `feedback`/`feedbackComment` are
+the caller's own rating of an assistant answer, or `null`.
+
+Assistant `content` may contain inline citation markers (`[1]`, `【1】`, or
+`【1†L5-L7】`) that reference source 1. The UI renders these as clickable
+superscripts linked to the message's `citations`; they are not a separate
+references list.
+
+### `PUT /conversations/{id}/messages/{messageId}/feedback` — rate an answer → 200
+
+```json
+{ "rating": "DOWN", "comment": "Missed the deadline on page 2." }
+```
+
+`rating` is `UP` or `DOWN`; `comment` is optional and ≤ 2000 chars. Submitting
+again replaces the existing rating (one per user/message). Only completed
+assistant answers can be rated (`400 INVALID_REQUEST`); foreign messages and
+conversations are hidden as `404`.
+
+Returns `{ id, messageId, rating, comment }`.
+
+### `DELETE /conversations/{id}/messages/{messageId}/feedback` — clear rating → 204
+
+Removes the caller's rating. Deleting a rating that does not exist is still
+`204`.
 
 ### `GET /conversations/{id}/stream?message=…` — ask (SSE) → `text/event-stream`
 

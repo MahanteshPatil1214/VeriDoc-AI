@@ -4,8 +4,10 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,6 +36,8 @@ import com.veridoc.ai.conversation.api.dto.ChatDtos.StreamToken;
 import com.veridoc.ai.conversation.domain.Conversation;
 import com.veridoc.ai.conversation.persistence.ConversationRepository;
 import com.veridoc.ai.document.persistence.RetrievedChunkRow;
+import com.veridoc.ai.feedback.domain.Feedback;
+import com.veridoc.ai.feedback.persistence.FeedbackRepository;
 import com.veridoc.ai.infrastructure.config.AiExceptions;
 import com.veridoc.ai.message.domain.Message;
 import com.veridoc.ai.message.domain.MessageRole;
@@ -56,6 +60,7 @@ public class ChatService {
 
 private final ConversationRepository conversationRepository;
     private final MessageRepository messageRepository;
+    private final FeedbackRepository feedbackRepository;
     private final CitationRepository citationRepository;
     private final RetrievalService retrievalService;
     private final GroundedPromptBuilder promptBuilder;
@@ -68,6 +73,7 @@ private final ConversationRepository conversationRepository;
 
     public ChatService(ConversationRepository conversationRepository,
                        MessageRepository messageRepository,
+                       FeedbackRepository feedbackRepository,
                        CitationRepository citationRepository,
                        RetrievalService retrievalService,
                        GroundedPromptBuilder promptBuilder,
@@ -79,6 +85,7 @@ private final ConversationRepository conversationRepository;
                        MeterRegistry meterRegistry) {
         this.conversationRepository = conversationRepository;
         this.messageRepository = messageRepository;
+        this.feedbackRepository = feedbackRepository;
         this.citationRepository = citationRepository;
         this.retrievalService = retrievalService;
         this.promptBuilder = promptBuilder;
@@ -203,10 +210,22 @@ GroundedPromptBuilder.PromptBundle bundle =
 
     public List<MessageDto> messages(AuthenticatedUser user, UUID conversationId) {
         requireConversation(user, conversationId);
-        return messageRepository.findByConversationIdOrderByCreatedAtAsc(
-                        conversationId, Pageable.unpaged()).stream()
+        List<Message> messages = messageRepository.findByConversationIdOrderByCreatedAtAsc(
+                conversationId, Pageable.unpaged());
+        List<UUID> messageIds = messages.stream().map(Message::getId).toList();
+        Map<UUID, Feedback> mine = feedbackRepository
+                .findByUserIdAndMessageIdIn(user.userId(), messageIds)
+                .stream()
+                .collect(Collectors.toMap(Feedback::getMessageId, feedback -> feedback));
+        Map<UUID, List<CitationDto>> citationsByMessage = citationRepository
+                .findByMessageIdInOrderByOrdinalAsc(messageIds)
+                .stream()
+                .collect(Collectors.groupingBy(Citation::getMessageId,
+                        Collectors.mapping(ChatService::toCitationDto, Collectors.toList())));
+        return messages.stream()
                 .filter(m -> m.getRole() != MessageRole.SYSTEM)
-                .map(ChatService::toMessageDto)
+                .map(m -> toMessageDto(m, mine.get(m.getId()),
+                        citationsByMessage.getOrDefault(m.getId(), List.of())))
                 .toList();
     }
 
@@ -340,9 +359,18 @@ private void autoTitle(Conversation conversation, String question) {
                 message.getTotalTokens(), message.getLatencyMs(), message.getCreatedAt(), citations);
     }
 
-    private static MessageDto toMessageDto(Message message) {
+    private static MessageDto toMessageDto(Message message, Feedback feedback,
+                                           List<CitationDto> citations) {
         return new MessageDto(message.getId(), message.getRole().name(), message.getContent(),
-                message.getStatus().name(), message.getCreatedAt());
+                message.getStatus().name(), message.getCreatedAt(),
+                feedback == null ? null : feedback.getRating().name(),
+                feedback == null ? null : feedback.getComment(), citations);
+    }
+
+    private static CitationDto toCitationDto(Citation citation) {
+        return new CitationDto(citation.getOrdinal(), citation.getDocumentId(),
+                citation.getDocumentFilename(), citation.getChunkId(), citation.getPageNumber(),
+                citation.getSection(), citation.getRelevanceScore(), citation.getQuotedText());
     }
 
     private Flux<ServerSentEvent<Object>> completeStream(Message assistant, String answer,

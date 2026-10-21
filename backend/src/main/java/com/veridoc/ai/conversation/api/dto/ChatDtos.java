@@ -52,12 +52,19 @@ public final class ChatDtos {
     ) {
     }
 
+    /**
+     * {@code feedback} is the caller's own rating ({@code UP}/{@code DOWN} or
+     * null); {@code feedbackComment} is their optional note.
+     */
     public record MessageDto(
             UUID id,
             String role,
             String content,
             String status,
-            Instant createdAt
+            Instant createdAt,
+            String feedback,
+            String feedbackComment,
+            List<CitationDto> citations
     ) {
     }
 

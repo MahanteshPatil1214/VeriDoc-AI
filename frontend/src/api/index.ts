@@ -18,6 +18,7 @@ export { authApi } from './auth'
 export { conversationsApi } from './conversations'
 export { chatApi } from './chat'
 export { documentsApi } from './documents'
+export { feedbackApi } from './feedback'
 export type {
   AuthResponse,
   LoginRequest,
@@ -36,5 +37,7 @@ export type {
   Citation,
   ChatReply,
   StreamEvent,
+  FeedbackRating,
+  FeedbackResponse,
 } from './types'
 export const hasStoredRefreshToken = () => localStorage.getItem(REFRESH_TOKEN_KEY) !== null

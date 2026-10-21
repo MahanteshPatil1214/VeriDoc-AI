@@ -1,5 +1,6 @@
 package com.veridoc.ai.citation.persistence;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -11,6 +12,8 @@ import com.veridoc.ai.citation.domain.Citation;
 public interface CitationRepository extends JpaRepository<Citation, UUID> {
 
     List<Citation> findByMessageIdOrderByOrdinalAsc(UUID messageId);
+
+    List<Citation> findByMessageIdInOrderByOrdinalAsc(Collection<UUID> messageIds);
 
     Optional<Citation> findByIdAndMessageId(UUID id, UUID messageId);
 
