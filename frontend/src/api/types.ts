@@ -27,6 +27,12 @@ export interface LoginRequest {
   password: string
 }
 
+/** Self-service reset: the account email plus the replacement password. */
+export interface ForgotPasswordRequest {
+  email: string
+  newPassword: string
+}
+
 /** Wrap the bearer token from anywhere so the client stays context-free. */
 export interface TokenProvider {
   getAccessToken: () => string | null

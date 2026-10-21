@@ -76,3 +76,36 @@
   width: 100%;
   padding: 11px 16px;
 }
+
+/* Tertiary text action: "Forgot password?" / "Back to sign in". */
+.auth-link {
+  align-self: flex-start;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  margin-top: -6px;
+  color: var(--accent-strong);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.auth-link:hover {
+  color: var(--accent);
+}
+
+.auth-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+
+/* Success feedback, muted so it never looks like an error. */
+.form-notice {
+  margin: 0;
+  color: var(--accent-strong);
+  font-size: var(--text-sm);
+}

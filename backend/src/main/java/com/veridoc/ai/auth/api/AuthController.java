@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.veridoc.ai.auth.api.dto.AuthDtos.AuthResponse;
+import com.veridoc.ai.auth.api.dto.AuthDtos.ForgotPasswordRequest;
 import com.veridoc.ai.auth.api.dto.AuthDtos.LoginRequest;
 import com.veridoc.ai.auth.api.dto.AuthDtos.RefreshRequest;
 import com.veridoc.ai.auth.api.dto.AuthDtos.RegisterRequest;
@@ -51,6 +52,18 @@ public class AuthController {
     @Operation(summary = "Mint a new access token from a refresh token")
     public ResponseEntity<AuthResponse> refresh(@Valid @RequestBody RefreshRequest request) {
         return ResponseEntity.ok(authService.refresh(request));
+    }
+
+    /**
+     * Replaces the password for the account owning {@code email}. Always
+     * returns {@code 204}, whether or not the account exists, so the endpoint
+     * cannot be used to enumerate users.
+     */
+    @PostMapping("/forgot-password")
+    @Operation(summary = "Reset a forgotten password using the account email")
+    public ResponseEntity<Void> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+        authService.forgotPassword(request);
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/me")

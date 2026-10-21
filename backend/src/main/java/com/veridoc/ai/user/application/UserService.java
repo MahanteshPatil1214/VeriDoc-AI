@@ -73,6 +73,24 @@ public class UserService {
         return user;
     }
 
+    /**
+     * Replaces the password for the account owning {@code email}. An unknown
+     * email is a no-op that still pays the BCrypt cost, so the caller cannot
+     * tell registered addresses from unregistered ones by timing or response.
+     */
+    @Transactional
+    public void resetPassword(String email, String rawPassword) {
+        String normalisedEmail = normaliseEmail(email);
+        User user = userRepository.findByEmailIgnoreCase(normalisedEmail).orElse(null);
+        if (user == null) {
+            // Equalise timing with the found-user path.
+            passwordEncoder.encode(rawPassword);
+            return;
+        }
+        user.changePassword(passwordEncoder.encode(rawPassword));
+        userRepository.save(user);
+    }
+
     @Transactional(readOnly = true)
     public User requireById(UUID userId) {
         return userRepository.findById(userId)

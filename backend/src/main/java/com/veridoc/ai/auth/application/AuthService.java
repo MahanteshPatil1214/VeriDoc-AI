@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.veridoc.ai.auth.api.dto.AuthDtos.AuthResponse;
+import com.veridoc.ai.auth.api.dto.AuthDtos.ForgotPasswordRequest;
 import com.veridoc.ai.auth.api.dto.AuthDtos.LoginRequest;
 import com.veridoc.ai.auth.api.dto.AuthDtos.RefreshRequest;
 import com.veridoc.ai.auth.api.dto.AuthDtos.RegisterRequest;
@@ -81,6 +82,21 @@ public class AuthService {
         User user = userService.requireById(caller.userId());
         user.requireEnabled();
         return issue(user);
+    }
+
+    /**
+     * Self-service reset: replaces the password for the account owning the
+     * email. Unknown emails succeed silently (no enumeration) and pay the same
+     * BCrypt cost. Throttled per email so the endpoint cannot be used to brute
+     * force someone's account into a new password.
+     */
+    @Transactional
+    public void forgotPassword(ForgotPasswordRequest request) {
+        rateLimiter.check("forgot-password", request.email(),
+                rateLimitProperties.forgotPassword());
+        userService.resetPassword(request.email(), request.newPassword());
+        // Deliberately no email or password in the log line.
+        log.info("Password reset processed traceId={}", TraceContext.currentTraceId());
     }
 
     private AuthResponse issue(User user) {

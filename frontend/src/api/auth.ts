@@ -1,5 +1,11 @@
 import { ApiClient } from './client'
-import type { AuthResponse, LoginRequest, RegisterRequest, User } from './types'
+import type {
+  AuthResponse,
+  ForgotPasswordRequest,
+  LoginRequest,
+  RegisterRequest,
+  User,
+} from './types'
 
 /** Auth endpoints. Login/register are unauthenticated; {@code me} carries the token. */
 export const authApi = (client: ApiClient) => ({
@@ -11,6 +17,13 @@ export const authApi = (client: ApiClient) => ({
 
   login: (request: LoginRequest) =>
     client.json<AuthResponse>('/api/v1/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    }),
+
+  /** Replaces the password for the account email. Always resolves with no body. */
+  forgotPassword: (request: ForgotPasswordRequest) =>
+    client.json<void>('/api/v1/auth/forgot-password', {
       method: 'POST',
       body: JSON.stringify(request),
     }),

@@ -190,9 +190,11 @@ veridoc:
     upload: ${RL_UPLOAD:20/PT1H}
     chat: ${RL_CHAT:60/PT1H}
     processing: ${RL_PROCESSING:30/PT1H}
+    # Self-service password resets are cheap to attempt and expensive to abuse.
+    forgot-password: ${RL_FORGOT_PASSWORD:5/PT15M}
 
   cors:
-    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:3000}
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:8081,http://localhost:5173,http://localhost:3000}
 
 management:
   endpoints:

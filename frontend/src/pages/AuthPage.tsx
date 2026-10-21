@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 
-import { ApiError } from '../api'
+import { api, authApi, ApiError } from '../api'
 import { useAuth } from '../auth/useAuth'
 import './AuthPage.css'
 
-type Mode = 'login' | 'register'
+type Mode = 'login' | 'register' | 'forgot'
 
 export function AuthPage() {
   const { login, register } = useAuth()
@@ -14,22 +14,31 @@ export function AuthPage() {
   const [password, setPassword] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
   const switchMode = (next: Mode) => {
     setMode(next)
     setError(null)
+    setNotice(null)
+    setPassword('')
   }
 
   const onSubmit = async (event: FormEvent) => {
     event.preventDefault()
     setError(null)
+    setNotice(null)
     setSubmitting(true)
     try {
       if (mode === 'login') {
         await login(email, password)
-      } else {
+      } else if (mode === 'register') {
         await register(email, password, displayName)
+      } else {
+        await authApi(api).forgotPassword({ email, newPassword: password })
+        setMode('login')
+        setPassword('')
+        setNotice('Password updated. Sign in with your new password.')
       }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Something went wrong. Please try again.')
@@ -96,26 +105,57 @@ export function AuthPage() {
         </label>
 
         <label className="field">
-          <span className="field-label">Password</span>
+          <span className="field-label">{mode === 'forgot' ? 'New password' : 'Password'}</span>
           <input
             className="input"
             type="password"
             autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-            minLength={mode === 'register' ? 12 : undefined}
+            minLength={mode === 'login' ? undefined : 12}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder={mode === 'register' ? 'At least 12 characters' : '••••••••'}
+            placeholder={mode === 'login' ? '••••••••' : 'At least 12 characters'}
             required
           />
         </label>
+
+        {mode === 'login' && (
+          <button type="button" className="auth-link" onClick={() => switchMode('forgot')}>
+            Forgot password?
+          </button>
+        )}
+
+        {mode === 'forgot' && (
+          <p className="auth-hint">
+            Enter your account email and choose a new password. If the account exists, its
+            password is replaced immediately.
+          </p>
+        )}
+
+        {notice && (
+          <p className="form-notice" role="status">
+            {notice}
+          </p>
+        )}
 
         <p className="form-error" role="alert">
           {error ?? ''}
         </p>
 
         <button className="btn btn-primary auth-submit" type="submit" disabled={submitting}>
-          {submitting ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account'}
+          {submitting
+            ? 'Please wait…'
+            : mode === 'login'
+              ? 'Sign in'
+              : mode === 'register'
+                ? 'Create account'
+                : 'Update password'}
         </button>
+
+        {mode === 'forgot' && (
+          <button type="button" className="auth-link" onClick={() => switchMode('login')}>
+            Back to sign in
+          </button>
+        )}
       </form>
     </div>
   )

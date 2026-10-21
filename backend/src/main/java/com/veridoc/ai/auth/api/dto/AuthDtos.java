@@ -53,6 +53,27 @@ public final class AuthDtos {
     ) {
     }
 
+    /**
+     * Self-service password reset. The account is identified by email and the
+     * caller supplies the replacement password directly; there is no email
+     * channel in this deployment, so no reset link is sent. The endpoint always
+     * answers {@code 204} so it cannot be used to discover registered accounts.
+     */
+    @Schema(name = "ForgotPasswordRequest")
+    public record ForgotPasswordRequest(
+
+            @NotBlank(message = "email is required")
+            @Email(message = "email must be a valid address")
+            @Size(max = 320, message = "email must not exceed 320 characters")
+            String email,
+
+            @NotBlank(message = "newPassword is required")
+            @Size(min = 12, max = 128,
+                    message = "newPassword must be between 12 and 128 characters")
+            String newPassword
+    ) {
+    }
+
     @Schema(name = "AuthResponse")
     public record AuthResponse(
             String tokenType,

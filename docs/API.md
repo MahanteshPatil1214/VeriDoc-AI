@@ -1,8 +1,9 @@
 # VeriDoc AI — API
 
 Base URL: `/api/v1`. All JSON bodies use UTF-8. All endpoints except
-`POST /auth/register` and `POST /auth/login` require an
-`Authorization: Bearer <accessToken>` header.
+`POST /auth/register`, `POST /auth/login`, `POST /auth/refresh` and
+`POST /auth/forgot-password` require an `Authorization: Bearer <accessToken>`
+header.
 
 ## Error envelope
 
@@ -85,6 +86,22 @@ Same request/response shape as register.
 ```
 
 Returns a fresh `AuthResponse`.
+
+### `POST /auth/forgot-password` — reset a forgotten password → 204
+
+```json
+{ "email": "ada@example.com", "newPassword": "at-least-12-chars" }
+```
+
+Replaces the password for the account owning `email`. `newPassword` follows the
+same 12–128 character rule as registration. The response is always `204`,
+whether or not the account exists, so the endpoint cannot be used to enumerate
+registered emails. Throttled per email (`RL_FORGOT_PASSWORD`, default
+`5/PT15M`).
+
+> There is no email channel in this deployment, so no reset link is sent: the
+> caller supplies the replacement password directly. In a public deployment this
+> should be replaced with an emailed single-use token before going live.
 
 ### `GET /auth/me` — current user → 200
 
