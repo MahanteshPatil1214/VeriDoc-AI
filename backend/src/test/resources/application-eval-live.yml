@@ -1,0 +1,42 @@
+# Live-provider evaluation profile.
+#
+# Loaded only when the Spring profile "eval-live" is active, which happens only
+# inside the live-evaluation harness (LiveEvaluationTestBase). It deliberately
+# does NOT inherit application-test.yml: that file exists for the
+# deterministic double and changes three things a live measurement must not
+# inherit - it raises the similarity floor from 0.15 to 0.2, turns query
+# rewriting off and turns RAG debug logging on.
+#
+# The provider credentials are not set here on purpose. application.yml already
+# reads them from the environment (GROQ_API_KEY / GEMINI_API_KEY); declaring
+# them again in this file could only shadow that, and a live run must
+# authenticate against the real keys.
+spring:
+  datasource:
+    hikari:
+      pool-name: veridoc-live-eval-cp
+      maximum-pool-size: 5
+
+veridoc:
+  jwt:
+    # The live run uses a throwaway database; the secret only has to satisfy
+    # the application's length requirement.
+    secret: ${JWT_SECRET:0123456789abcdef0123456789abcdef0123456789abcdef}
+  rate-limit:
+    # A live run asks dozens of questions in a row; the rate limiter would
+    # reject them for reasons that have nothing to do with retrieval quality.
+    enabled: false
+  storage:
+    # Kept away from the deterministic suite's storage directory.
+    root: ./target/live-eval-storage
+  retrieval:
+    # The production floor. The deterministic double needs 0.2 because its
+    # similarity is driven by stopword multiplicity; a live run measures the
+    # production configuration, so the production value applies.
+    min-score: 0.15
+  rag:
+    # Production behaviour: the query is rewritten before retrieval.
+    enable-query-rewriting: true
+    # RAG debug logging prints chunk content to the application log. It stays
+    # off for a live run, exactly as in production.
+    debug-enabled: false
