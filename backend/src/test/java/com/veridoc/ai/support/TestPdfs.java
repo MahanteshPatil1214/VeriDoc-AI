@@ -17,19 +17,26 @@ public final class TestPdfs {
 
     /** A single-page PDF whose text is a blank-separated {@code message}. */
     public static byte[] singlePage(String message) throws IOException {
+        return pages(message);
+    }
+
+    /** One PDF page per supplied message, in order. */
+    public static byte[] pages(String... messages) throws IOException {
         try (PDDocument document = new PDDocument()) {
-            PDPage page = new PDPage();
-            document.addPage(page);
-            try (PDPageContentStream cs = new PDPageContentStream(document, page)) {
-                cs.beginText();
-                cs.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 12);
-                cs.newLineAtOffset(50, 700);
-                String[] lines = message.split("(?<=[.!?])\\s+");
-                for (String line : lines) {
-                    cs.showText(line);
-                    cs.newLineAtOffset(0, -16);
+            for (String message : messages) {
+                PDPage page = new PDPage();
+                document.addPage(page);
+                try (PDPageContentStream cs = new PDPageContentStream(document, page)) {
+                    cs.beginText();
+                    cs.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 12);
+                    cs.newLineAtOffset(50, 700);
+                    String[] lines = message.split("(?<=[.!?])\\s+");
+                    for (String line : lines) {
+                        cs.showText(line);
+                        cs.newLineAtOffset(0, -16);
+                    }
+                    cs.endText();
                 }
-                cs.endText();
             }
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             document.save(out);

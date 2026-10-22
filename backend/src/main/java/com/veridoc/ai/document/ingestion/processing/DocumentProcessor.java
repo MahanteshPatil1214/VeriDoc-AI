@@ -1,15 +1,11 @@
 package com.veridoc.ai.document.ingestion.processing;
 
 import java.io.IOException;
-import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.ai.embedding.EmbeddingModel;
-import org.springframework.ai.embedding.EmbeddingRequest;
-import org.springframework.ai.embedding.EmbeddingResponse;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -26,8 +22,6 @@ import com.veridoc.ai.document.persistence.DocumentChunkRepository;
 import com.veridoc.ai.document.persistence.DocumentRepository;
 import com.veridoc.ai.document.persistence.DocumentVersionRepository;
 import com.veridoc.ai.document.storage.LocalDocumentStorage;
-import com.veridoc.ai.infrastructure.config.AiConfig.EmbeddingDimensions;
-import com.veridoc.ai.infrastructure.config.EmbeddingOptionsFactory;
 import com.veridoc.ai.infrastructure.vector.PgVectorChunkRepository;
 
 /**
@@ -50,8 +44,7 @@ public class DocumentProcessor {
     private final LocalDocumentStorage storage;
     private final PdfExtractor pdfExtractor;
     private final TokenChunker tokenChunker;
-    private final EmbeddingModel embeddingModel;
-    private final EmbeddingDimensions embeddingDimensions;
+    private final EmbeddingBatcher embeddingBatcher;
     private final EmbeddingProperties embeddingProperties;
 
     public DocumentProcessor(DocumentRepository documentRepository,
@@ -61,8 +54,7 @@ public class DocumentProcessor {
                              LocalDocumentStorage storage,
                              PdfExtractor pdfExtractor,
                              TokenChunker tokenChunker,
-                             EmbeddingModel embeddingModel,
-                             EmbeddingDimensions embeddingDimensions,
+                             EmbeddingBatcher embeddingBatcher,
                              EmbeddingProperties embeddingProperties) {
         this.documentRepository = documentRepository;
         this.documentVersionRepository = documentVersionRepository;
@@ -71,8 +63,7 @@ public class DocumentProcessor {
         this.storage = storage;
         this.pdfExtractor = pdfExtractor;
         this.tokenChunker = tokenChunker;
-        this.embeddingModel = embeddingModel;
-        this.embeddingDimensions = embeddingDimensions;
+        this.embeddingBatcher = embeddingBatcher;
         this.embeddingProperties = embeddingProperties;
     }
 
@@ -107,13 +98,8 @@ public class DocumentProcessor {
             document.markProcessing(DocumentStatus.EMBEDDING);
             documentRepository.save(document);
 
-            String[] texts = chunks.stream().map(TokenChunker.Chunk::content).toArray(String[]::new);
-            EmbeddingResponse response = embeddingModel.call(new EmbeddingRequest(Arrays.asList(texts),
-                    EmbeddingOptionsFactory.forDocuments(embeddingProperties)));
-            var embeddings = response.getResults();
-            if (embeddings.size() != chunks.size()) {
-                throw new AppException(ErrorCode.DOCUMENT_PROCESSING_FAILED, "Embedding count mismatch");
-            }
+            List<String> texts = chunks.stream().map(TokenChunker.Chunk::content).toList();
+            List<float[]> chunkVectors = embeddingBatcher.embedAll(texts);
 
             document = load(documentId);
             document.markProcessing(DocumentStatus.INDEXING);
@@ -123,11 +109,7 @@ public class DocumentProcessor {
             List<double[]> vectors = new java.util.ArrayList<>(chunks.size());
             for (int i = 0; i < chunks.size(); i++) {
                 var c = chunks.get(i);
-                float[] vector = embeddings.get(i).getOutput();
-                if (vector == null || vector.length == 0) {
-                    throw new AppException(ErrorCode.DOCUMENT_PROCESSING_FAILED, "Empty embedding returned");
-                }
-                embeddingDimensions.requireMatch(vector.length, "chunk embedding");
+                float[] vector = chunkVectors.get(i);
                 DocumentChunk dc = DocumentChunk.create(UUID.randomUUID(), document.getId(),
                         version.getId(), document.getOwnerId(), c.chunkIndex(), c.content(),
                         c.pageNumber(), null, c.tokenCount(), c.contentHash(), embeddingProperties.model(),
@@ -144,7 +126,10 @@ public class DocumentProcessor {
             document = load(documentId);
             document.markReady(pages.size(), chunks.size());
             documentRepository.save(document);
-            log.info("Document {} processed: {} pages, {} chunks", document.getId(), pages.size(), chunks.size());
+            log.info("Document {} processed: {} pages, {} chunks, {} embedding batches",
+                    document.getId(), pages.size(), chunks.size(),
+                    (chunks.size() + embeddingProperties.batchSize() - 1)
+                            / embeddingProperties.batchSize());
         } catch (AppException e) {
             fail(documentId, e.getMessage());
         } catch (IOException e) {
