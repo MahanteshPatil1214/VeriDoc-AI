@@ -41,6 +41,14 @@ public class User {
     @Column(name = "enabled", nullable = false)
     private boolean enabled = true;
 
+    /**
+     * Refresh-token revocation epoch. Incremented whenever credentials change;
+     * tokens carrying an older value cannot be refreshed. Access tokens are
+     * deliberately not checked against this field (they expire quickly).
+     */
+    @Column(name = "token_version", nullable = false)
+    private long tokenVersion;
+
     @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
     private Instant createdAt;
 
@@ -95,6 +103,11 @@ public class User {
 
     public void changePassword(String newPasswordHash) {
         this.passwordHash = newPasswordHash;
+        this.tokenVersion++;
+    }
+
+    public long getTokenVersion() {
+        return tokenVersion;
     }
 
     public Instant getCreatedAt() {

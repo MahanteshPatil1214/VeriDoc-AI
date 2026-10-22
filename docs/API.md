@@ -1,9 +1,8 @@
 # VeriDoc AI — API
 
 Base URL: `/api/v1`. All JSON bodies use UTF-8. All endpoints except
-`POST /auth/register`, `POST /auth/login`, `POST /auth/refresh` and
-`POST /auth/forgot-password` require an `Authorization: Bearer <accessToken>`
-header.
+`POST /auth/register`, `POST /auth/login` and `POST /auth/refresh` require an
+`Authorization: Bearer <accessToken>` header.
 
 ## Error envelope
 
@@ -87,21 +86,24 @@ Same request/response shape as register.
 
 Returns a fresh `AuthResponse`.
 
-### `POST /auth/forgot-password` — reset a forgotten password → 204
+### `PUT /auth/password` — change the current password → 204
+
+Requires a bearer token.
 
 ```json
-{ "email": "ada@example.com", "newPassword": "at-least-12-chars" }
+{ "currentPassword": "current-secret", "newPassword": "at-least-12-chars" }
 ```
 
-Replaces the password for the account owning `email`. `newPassword` follows the
-same 12–128 character rule as registration. The response is always `204`,
-whether or not the account exists, so the endpoint cannot be used to enumerate
-registered emails. Throttled per email (`RL_FORGOT_PASSWORD`, default
-`5/PT15M`).
+The current password must match or the request fails with
+`400 INVALID_REQUEST`. `newPassword` follows the same 12–128 character rule as
+registration. A successful change increments the account's token version, so
+every previously issued refresh token is rejected. Access tokens are not
+revoked immediately; they remain valid until their normal TTL expires (one hour
+by default). The client should discard its tokens and sign in again.
 
-> There is no email channel in this deployment, so no reset link is sent: the
-> caller supplies the replacement password directly. In a public deployment this
-> should be replaced with an emailed single-use token before going live.
+> Self-service password reset is intentionally unavailable until a verified
+> ownership flow (for example, an emailed single-use token) exists. There is no
+> `POST /auth/forgot-password` endpoint.
 
 ### `GET /auth/me` — current user → 200
 

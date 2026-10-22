@@ -74,20 +74,18 @@ public class UserService {
     }
 
     /**
-     * Replaces the password for the account owning {@code email}. An unknown
-     * email is a no-op that still pays the BCrypt cost, so the caller cannot
-     * tell registered addresses from unregistered ones by timing or response.
+     * Changes an authenticated user's password after verifying the current one.
+     * The entity increments its token version, invalidating existing refresh
+     * tokens; the caller's access token remains valid until its normal expiry.
      */
     @Transactional
-    public void resetPassword(String email, String rawPassword) {
-        String normalisedEmail = normaliseEmail(email);
-        User user = userRepository.findByEmailIgnoreCase(normalisedEmail).orElse(null);
-        if (user == null) {
-            // Equalise timing with the found-user path.
-            passwordEncoder.encode(rawPassword);
-            return;
+    public void changePassword(UUID userId, String currentRawPassword, String newRawPassword) {
+        User user = requireById(userId);
+        user.requireEnabled();
+        if (!passwordEncoder.matches(currentRawPassword, user.getPasswordHash())) {
+            throw AppException.invalidRequest("Current password is incorrect.");
         }
-        user.changePassword(passwordEncoder.encode(rawPassword));
+        user.changePassword(passwordEncoder.encode(newRawPassword));
         userRepository.save(user);
     }
 

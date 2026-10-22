@@ -85,6 +85,27 @@ class ChatStreamingIT extends AbstractPostgresIntegrationTest {
     }
 
     @Test
+    @DisplayName("an uncited stream is reconciled to the refusal with no citations")
+    void uncitedStreamFailsClosed() throws Exception {
+        String token = tokenForNewUser();
+        UUID docId = uploadAndAwaitReady(token, "uncited-stream.pdf");
+        UUID conversationId = createConversation(token, "Uncited stream");
+        attach(token, conversationId, docId);
+
+        String body = streamBody(token, conversationId, GROUNDED_QUERY + " NO_CITATION");
+
+        assertThat(body).contains("event:token");
+        assertThat(body).contains("event:done");
+        assertThat(body).doesNotContain("event:citations");
+        assertThat(body).contains(REFUSAL);
+
+        JsonNode json = objectMapper.readTree(messages(token, conversationId));
+        assertThat(json.get(1).get("status").asText()).isEqualTo("COMPLETE");
+        assertThat(json.get(1).get("content").asText()).isEqualTo(REFUSAL);
+        assertThat(json.get(1).get("citations")).isEmpty();
+    }
+
+    @Test
     @DisplayName("an unsupported question streams the refusal and no citations")
     void unsupportedQuestionStreamsRefusal() throws Exception {
         String token = tokenForNewUser();
@@ -143,7 +164,7 @@ class ChatStreamingIT extends AbstractPostgresIntegrationTest {
         UUID conversationId = createConversation(token, "Cancel stream");
         attach(token, conversationId, docId);
 
-        AuthenticatedUser user = new AuthenticatedUser(userId, "test@example.com", Role.USER);
+        AuthenticatedUser user = new AuthenticatedUser(userId, "test@example.com", Role.USER, 0L);
 
         List<ServerSentEvent<Object>> received =
                 chatService.stream(user, conversationId, GROUNDED_QUERY)

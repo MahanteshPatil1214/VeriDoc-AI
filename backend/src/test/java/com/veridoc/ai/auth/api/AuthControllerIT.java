@@ -3,9 +3,11 @@ package com.veridoc.ai.auth.api;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.util.Map;
 import java.util.UUID;
 
 import org.junit.jupiter.api.DisplayName;
@@ -16,7 +18,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 
-import com.veridoc.ai.auth.api.dto.AuthDtos.ForgotPasswordRequest;
+import com.veridoc.ai.auth.api.dto.AuthDtos.ChangePasswordRequest;
 import com.veridoc.ai.auth.api.dto.AuthDtos.LoginRequest;
 import com.veridoc.ai.auth.api.dto.AuthDtos.RegisterRequest;
 import com.veridoc.ai.common.error.ErrorCode;
@@ -187,8 +189,8 @@ class AuthControllerIT extends AbstractPostgresIntegrationTest {
     }
 
     @Test
-    @DisplayName("forgot-password replaces the password and retires the old one")
-    void forgotPasswordReplacesPassword() throws Exception {
+    @DisplayName("the removed password-reset endpoint rejects anonymous callers and leaves credentials intact")
+    void anonymousPasswordResetIsUnavailable() throws Exception {
         String email = uniqueEmail();
         register(email);
         String newPassword = "brand new password";
@@ -196,66 +198,86 @@ class AuthControllerIT extends AbstractPostgresIntegrationTest {
         mockMvc.perform(post("/api/v1/auth/forgot-password")
                         .contentType("application/json")
                         .content(objectMapper.writeValueAsString(
-                                new ForgotPasswordRequest(email, newPassword))))
-                .andExpect(status().isNoContent());
+                                Map.of("email", email, "newPassword", newPassword))))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(ErrorCode.UNAUTHORIZED.name()));
 
-        mockMvc.perform(post("/api/v1/auth/login")
-                        .contentType("application/json")
-                        .content(objectMapper.writeValueAsString(
-                                new LoginRequest(email, newPassword))))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.accessToken").isNotEmpty());
-
-        mockMvc.perform(post("/api/v1/auth/login")
-                        .contentType("application/json")
-                        .content(objectMapper.writeValueAsString(
-                                new LoginRequest(email, PASSWORD))))
-                .andExpect(status().isUnauthorized());
+        loginExpecting(email, PASSWORD, 200);
+        loginExpecting(email, newPassword, 401);
     }
 
     @Test
-    @DisplayName("forgot-password answers the same for unknown emails and creates nothing")
-    void forgotPasswordDoesNotRevealUnknownAccounts() throws Exception {
-        String unknownEmail = uniqueEmail();
-
-        mockMvc.perform(post("/api/v1/auth/forgot-password")
-                        .contentType("application/json")
-                        .content(objectMapper.writeValueAsString(
-                                new ForgotPasswordRequest(unknownEmail, "brand new password"))))
-                .andExpect(status().isNoContent());
-
-        assertThat(countUsers(unknownEmail)).isZero();
-    }
-
-    @Test
-    @DisplayName("forgot-password enforces the password policy and leaves the account intact")
-    void forgotPasswordRejectsWeakPassword() throws Exception {
+    @DisplayName("changing a password requires the current password")
+    void changePasswordRequiresCurrentPassword() throws Exception {
         String email = uniqueEmail();
         register(email);
+        String accessToken = loginAndGet(email, "accessToken");
+        String newPassword = "brand new password";
 
-        mockMvc.perform(post("/api/v1/auth/forgot-password")
+        mockMvc.perform(put("/api/v1/auth/password")
+                        .header("Authorization", "Bearer " + accessToken)
                         .contentType("application/json")
                         .content(objectMapper.writeValueAsString(
-                                new ForgotPasswordRequest(email, "short"))))
+                                new ChangePasswordRequest("wrong current password", newPassword))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(ErrorCode.INVALID_REQUEST.name()));
+
+        loginExpecting(email, PASSWORD, 200);
+        loginExpecting(email, newPassword, 401);
+    }
+
+    @Test
+    @DisplayName("changing a password revokes refresh tokens; access tokens expire naturally")
+    void changePasswordRevokesRefreshTokens() throws Exception {
+        String email = uniqueEmail();
+        register(email);
+        String accessToken = loginAndGet(email, "accessToken");
+        String refreshToken = loginAndGet(email, "refreshToken");
+        String newPassword = "brand new password";
+
+        mockMvc.perform(put("/api/v1/auth/password")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(
+                                new ChangePasswordRequest(PASSWORD, newPassword))))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(
+                                new com.veridoc.ai.auth.api.dto.AuthDtos.RefreshRequest(
+                                        refreshToken))))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(ErrorCode.UNAUTHORIZED.name()));
+
+        // Explicitly documented limitation: access tokens are not checked
+        // against token_version, so this one works until its short TTL expires.
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value(email));
+
+        loginExpecting(email, PASSWORD, 401);
+        loginExpecting(email, newPassword, 200);
+    }
+
+    @Test
+    @DisplayName("a changed password must satisfy the same policy as registration")
+    void changePasswordValidatesNewPassword() throws Exception {
+        String email = uniqueEmail();
+        register(email);
+        String accessToken = loginAndGet(email, "accessToken");
+
+        mockMvc.perform(put("/api/v1/auth/password")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(
+                                new ChangePasswordRequest(PASSWORD, "short"))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(ErrorCode.VALIDATION_FAILED.name()))
                 .andExpect(jsonPath("$.details.newPassword").exists());
 
-        mockMvc.perform(post("/api/v1/auth/login")
-                        .contentType("application/json")
-                        .content(objectMapper.writeValueAsString(
-                                new LoginRequest(email, PASSWORD))))
-                .andExpect(status().isOk());
-    }
-
-    @Test
-    @DisplayName("forgot-password is reachable without a token")
-    void forgotPasswordIsPublic() throws Exception {
-        mockMvc.perform(post("/api/v1/auth/forgot-password")
-                        .contentType("application/json")
-                        .content(objectMapper.writeValueAsString(
-                                new ForgotPasswordRequest(uniqueEmail(), "brand new password"))))
-                .andExpect(status().isNoContent());
+        loginExpecting(email, PASSWORD, 200);
     }
 
     @Test
@@ -333,5 +355,14 @@ class AuthControllerIT extends AbstractPostgresIntegrationTest {
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         return objectMapper.readTree(response).get(field).asText();
+    }
+
+    private void loginExpecting(String email, String password, int expectedStatus)
+            throws Exception {
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(
+                                new LoginRequest(email, password))))
+                .andExpect(status().is(expectedStatus));
     }
 }

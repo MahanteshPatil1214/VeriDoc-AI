@@ -4,17 +4,19 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.veridoc.ai.auth.api.dto.AuthDtos.AuthResponse;
-import com.veridoc.ai.auth.api.dto.AuthDtos.ForgotPasswordRequest;
+import com.veridoc.ai.auth.api.dto.AuthDtos.ChangePasswordRequest;
 import com.veridoc.ai.auth.api.dto.AuthDtos.LoginRequest;
 import com.veridoc.ai.auth.api.dto.AuthDtos.RefreshRequest;
 import com.veridoc.ai.auth.api.dto.AuthDtos.RegisterRequest;
 import com.veridoc.ai.auth.application.AuthService;
 import com.veridoc.ai.security.CurrentUser;
+import com.veridoc.ai.security.authenticated.AuthenticatedUser;
 import com.veridoc.ai.user.api.dto.UserResponse;
 import com.veridoc.ai.user.application.UserService;
 
@@ -55,20 +57,21 @@ public class AuthController {
     }
 
     /**
-     * Replaces the password for the account owning {@code email}. Always
-     * returns {@code 204}, whether or not the account exists, so the endpoint
-     * cannot be used to enumerate users.
+     * Changes the password for the authenticated account. The caller must prove
+     * ownership by supplying the current password; this is not a reset flow.
      */
-    @PostMapping("/forgot-password")
-    @Operation(summary = "Reset a forgotten password using the account email")
-    public ResponseEntity<Void> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
-        authService.forgotPassword(request);
+    @PutMapping("/password")
+    @Operation(summary = "Change the current user's password")
+    public ResponseEntity<Void> changePassword(
+            @CurrentUser AuthenticatedUser user,
+            @Valid @RequestBody ChangePasswordRequest request) {
+        authService.changePassword(user.userId(), request);
         return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/me")
     @Operation(summary = "Return the currently authenticated user")
-    public UserResponse me(@CurrentUser com.veridoc.ai.security.authenticated.AuthenticatedUser user) {
+    public UserResponse me(@CurrentUser AuthenticatedUser user) {
         // The user id comes from the validated token, never from the request.
         return UserResponse.from(userService.requireById(user.userId()));
     }
