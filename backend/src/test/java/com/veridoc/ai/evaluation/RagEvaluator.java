@@ -7,6 +7,10 @@ import java.util.List;
  * Runs every case in a dataset through a {@link CaseRunner} and grades the
  * outcome. Deliberately free of Spring so it can be unit-tested and reused with
  * any transport (HTTP, service call, ...).
+ *
+ * <p>Retrieval metrics are fed {@link EvalObservation#retrieved()}; citation
+ * metrics are fed {@link EvalObservation#citations()}. Keeping those two
+ * arguments distinct is the whole point of this class's grading step.
  */
 public final class RagEvaluator {
 
@@ -29,21 +33,50 @@ public final class RagEvaluator {
         return new EvalReport(dataset.name(), dataset.corpus(), results, retrievalK);
     }
 
-    private static EvalCaseResult grade(EvalCase evalCase, EvalObservation observation,
-                                        int retrievalK) {
-        List<String> ranked = observation.rankedDocuments();
-        String expected = evalCase.expectedDocument();
-        boolean refusalCorrect = observation.refusal() == evalCase.expectRefusal();
+    /** Package-visible so the metric wiring can be unit-tested without a transport. */
+    static EvalCaseResult grade(EvalCase evalCase, EvalObservation observation,
+                                int retrievalK) {
+        RelevanceLabels labels = evalCase.labels();
+        List<EvidencePassage> retrieved = observation.retrieved();
         return new EvalCaseResult(
                 evalCase,
                 observation,
-                RetrievalMetrics.hit(ranked, expected),
-                RetrievalMetrics.reciprocalRank(ranked, expected),
-                RetrievalMetrics.precisionAtK(ranked, retrievalK),
-                RetrievalMetrics.recallAtK(ranked, expected, retrievalK),
+                RetrievalMetrics.hitAtK(retrieved, labels, retrievalK),
+                RetrievalMetrics.reciprocalRank(retrieved, labels),
+                RetrievalMetrics.precisionAtK(retrieved, labels, retrievalK),
+                RetrievalMetrics.recallAtK(retrieved, labels, retrievalK),
                 AnswerMetrics.keywordCoverage(observation.answer(), evalCase.expectedKeywords()),
-                refusalCorrect,
-                CitationMetrics.citationAccuracy(ranked, expected));
+                observation.refusal() == evalCase.expectRefusal(),
+                CitationMetrics.citationPrecision(observation.citations(), labels),
+                CitationMetrics.pageCitationPrecision(observation.citations(), labels),
+                CitationMetrics.pageCitationRecall(observation.citations(), labels));
+    }
+
+    /**
+     * Throws a descriptive {@link AssertionError} when the report misses the
+     * deterministic-double gate.
+     *
+     * <p>This is the Stage 2 gate: every metric the double can express is
+     * checked, including recall, precision and citation precision. The Stage 3
+     * real-provider gate is {@link EvalThresholds#core()}.
+     */
+    public static void assertMeets(EvalReport report, EvalGate gate) {
+        List<String> failures = new ArrayList<>();
+        check(failures, "hitRate", report.hitRate(), gate.minHitRate());
+        check(failures, "meanReciprocalRank", report.meanReciprocalRank(),
+                gate.minMeanReciprocalRank());
+        check(failures, "meanRecallAtK", report.meanRecallAtK(), gate.minMeanRecallAtK());
+        check(failures, "meanPrecisionAtK", report.meanPrecisionAtK(), gate.minMeanPrecisionAtK());
+        check(failures, "meanKeywordCoverage", report.meanKeywordCoverage(),
+                gate.minMeanKeywordCoverage());
+        check(failures, "meanCitationPrecision", report.meanCitationPrecision(),
+                gate.minMeanCitationPrecision());
+        check(failures, "refusalCorrectness", report.refusalCorrectness(),
+                gate.minRefusalCorrectness());
+        if (!failures.isEmpty()) {
+            throw new AssertionError("RAG evaluation below the deterministic-stub gate: "
+                    + String.join("; ", failures) + System.lineSeparator() + report.summary());
+        }
     }
 
     /** Throws a descriptive {@link AssertionError} when the report misses the gate. */

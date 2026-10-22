@@ -287,4 +287,50 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <!--
+            Opt-in live-provider evaluation.
+
+            Disabled by default: a Maven profile is only active when it is named
+            explicitly, so `mvn verify` and the CI workflow never enable it and
+            the default build is byte-for-byte unchanged.
+
+            The profile is necessary but not sufficient. The harness also
+            requires -Dveridoc.eval.live=true on the command line, and it
+            refuses to run when the CI environment variable is set. The profile
+            stamps the system property below into the forked JVM so the harness
+            can tell that the profile really was active - see
+            com.veridoc.ai.evaluation.live.LiveEvalActivation.
+
+            The harness class is deliberately named so that it does not match
+            **/*IT.java. That is what keeps it out of the default Failsafe
+            include list; this profile is the only thing that adds it.
+        -->
+        <profile>
+            <id>live-eval</id>
+            <properties>
+                <veridoc.eval.live.profile>active</veridoc.eval.live.profile>
+            </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-failsafe-plugin</artifactId>
+                        <configuration>
+                            <!-- Appended, so the live profile runs the normal
+                                 integration suite as well and cannot weaken
+                                 any existing check. -->
+                            <includes combine.children="append">
+                                <include>**/LiveProviderEvaluation.java</include>
+                            </includes>
+                            <systemPropertyVariables>
+                                <veridoc.eval.live.profile>${veridoc.eval.live.profile}</veridoc.eval.live.profile>
+                            </systemPropertyVariables>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>
