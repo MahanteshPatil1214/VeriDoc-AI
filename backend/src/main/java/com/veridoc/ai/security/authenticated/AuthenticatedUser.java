@@ -15,7 +15,8 @@ import com.veridoc.ai.user.domain.Role;
  * Every query that touches user-scoped data must be filtered by
  * {@link #userId()} rather than by an id supplied in the request body.
  */
-public record AuthenticatedUser(UUID userId, String email, Role role) implements UserDetails {
+public record AuthenticatedUser(UUID userId, String email, Role role, long tokenVersion)
+        implements UserDetails {
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {

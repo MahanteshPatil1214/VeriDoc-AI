@@ -134,8 +134,11 @@ State machine facts that matter:
    dropped.
 3. The prompt is assembled from retrieved chunks (untrusted data) and history,
    bounded by `RAG_MAX_CONTEXT_TOKENS`.
-4. The chat model (Groq) answers; only chunks actually cited are emitted as
-   citations.
+4. The chat model (Groq) answers. Citation markers are resolved against the
+   exact prompt evidence after context trimming; only passages actually cited
+   are persisted. Malformed/out-of-range markers never create sources, and an
+   answer with no valid citation is replaced by the no-evidence answer. This is
+   a structural/provenance check, not a semantic faithfulness verifier.
 
 If no chunk clears the score threshold, or the model cannot ground an answer in
 the context, the reply is `RagProperties.noEvidenceAnswer()` — the explicit no-
@@ -149,7 +152,10 @@ Failures arrive as a terminal `error` event with a stable `code`.
 ## Security
 
 - **JWT**: access token (`JWT_ACCESS_TTL`), rotating refresh
-  (`JWT_REFRESH_TTL`), fixed issuer; secret from environment.
+  (`JWT_REFRESH_TTL`), fixed issuer; secret from environment. Tokens carry a
+  `token_version`; password changes increment it and revoke existing refresh
+  tokens. Access tokens are not DB-checked and remain valid until their short
+  TTL. Self-service reset is disabled until a verified ownership flow exists.
 - **Ownership**: every document/conversation service method resolves the row
   with `findBy…AndOwner`; foreign resources surface as `404 NOT FOUND` (no
   existence leakage).

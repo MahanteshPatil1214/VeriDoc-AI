@@ -1,6 +1,7 @@
 package com.veridoc.ai.auth.application;
 
 import java.time.Instant;
+import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -8,10 +9,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.veridoc.ai.auth.api.dto.AuthDtos.AuthResponse;
-import com.veridoc.ai.auth.api.dto.AuthDtos.ForgotPasswordRequest;
+import com.veridoc.ai.auth.api.dto.AuthDtos.ChangePasswordRequest;
 import com.veridoc.ai.auth.api.dto.AuthDtos.LoginRequest;
 import com.veridoc.ai.auth.api.dto.AuthDtos.RefreshRequest;
 import com.veridoc.ai.auth.api.dto.AuthDtos.RegisterRequest;
+import com.veridoc.ai.common.error.AppException;
+import com.veridoc.ai.common.error.ErrorCode;
 import com.veridoc.ai.common.trace.TraceContext;
 import com.veridoc.ai.config.properties.RateLimitProperties;
 import com.veridoc.ai.security.RedisRateLimiter;
@@ -81,22 +84,23 @@ public class AuthService {
         AuthenticatedUser caller = tokenService.parseRefreshToken(request.refreshToken());
         User user = userService.requireById(caller.userId());
         user.requireEnabled();
+        if (caller.tokenVersion() != user.getTokenVersion()) {
+            throw new AppException(ErrorCode.UNAUTHORIZED,
+                    "Session is no longer valid. Please sign in again.");
+        }
         return issue(user);
     }
 
     /**
-     * Self-service reset: replaces the password for the account owning the
-     * email. Unknown emails succeed silently (no enumeration) and pay the same
-     * BCrypt cost. Throttled per email so the endpoint cannot be used to brute
-     * force someone's account into a new password.
+     * Changes the password only after the caller proves ownership with the
+     * current password. The token version is incremented by the entity, which
+     * invalidates all previously issued refresh tokens.
      */
     @Transactional
-    public void forgotPassword(ForgotPasswordRequest request) {
-        rateLimiter.check("forgot-password", request.email(),
-                rateLimitProperties.forgotPassword());
-        userService.resetPassword(request.email(), request.newPassword());
+    public void changePassword(UUID userId, ChangePasswordRequest request) {
+        userService.changePassword(userId, request.currentPassword(), request.newPassword());
         // Deliberately no email or password in the log line.
-        log.info("Password reset processed traceId={}", TraceContext.currentTraceId());
+        log.info("Password changed userId={} traceId={}", userId, TraceContext.currentTraceId());
     }
 
     private AuthResponse issue(User user) {
@@ -110,6 +114,7 @@ public class AuthService {
     }
 
     static AuthenticatedUser toPrincipal(User user) {
-        return new AuthenticatedUser(user.getId(), user.getEmail(), user.getRole());
+        return new AuthenticatedUser(user.getId(), user.getEmail(), user.getRole(),
+                user.getTokenVersion());
     }
 }

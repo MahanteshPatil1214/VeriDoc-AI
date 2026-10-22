@@ -137,11 +137,27 @@ private final ConversationRepository conversationRepository;
                     System.currentTimeMillis() - t0, System.currentTimeMillis() - tp,
                     bundle.evidence().size(), bundle.prompt().getInstructions().size());
             debugEvidence(question, bundle.evidence());
-            meterRegistry.counter("veridoc.rag.citations").increment(bundle.evidence().size());
             log.info("chat.ask.generate.start +{}ms", System.currentTimeMillis() - t0);
-            assistant = generate(conversationId, bundle, started);
+            GeneratedAnswer generated = generate(conversationId, bundle, started);
             log.info("chat.ask.generate.done +{}ms", System.currentTimeMillis() - t0);
-            citationDtos = persistCitations(assistant.getId(), bundle.evidence());
+
+            CitationMarkerResolver.Resolution resolved = CitationMarkerResolver.resolve(
+                    generated.content(), bundle.evidence(), ragProperties.noEvidenceAnswer());
+            assistant = completeAssistant(conversationId, aiProperties.chatModel(),
+                    resolved.content(), generated.promptTokens(), generated.completionTokens(),
+                    generated.latencyMs());
+            messageRepository.save(assistant);
+
+            if (resolved.hasCitations()) {
+                citationDtos = persistCitations(assistant.getId(), resolved.citedPassages());
+                meterRegistry.counter("veridoc.rag.citations").increment(citationDtos.size());
+            } else {
+                meterRegistry.counter("veridoc.rag.refusals").increment();
+                citationDtos = List.of();
+                log.info("chat.ask.citations.rejected message={} markers={} invalid={} evidenceUsed={}",
+                        assistant.getId(), resolved.markerCount(), resolved.invalidMarkerCount(),
+                        bundle.evidence().size());
+            }
         }
         log.info("chat.ask.done +{}ms modelMs={}", System.currentTimeMillis() - t0,
                 Duration.between(started, Instant.now()).toMillis());
@@ -187,7 +203,6 @@ List<RetrievedChunkRow> evidence = retrieve(user.userId(), conversationId, quest
 GroundedPromptBuilder.PromptBundle bundle =
                 promptBuilder.build(question, evidence, history);
         debugEvidence(question, bundle.evidence());
-        meterRegistry.counter("veridoc.rag.citations").increment(bundle.evidence().size());
         Instant started = Instant.now();
         Message assistant = Message.assistantStreaming(
                 UUID.randomUUID(), conversationId, aiProperties.chatModel());
@@ -280,8 +295,9 @@ private void autoTitle(Conversation conversation, String question) {
         rateLimiter.check("chat", user.userId().toString(), rateLimitProperties.chat());
     }
 
-    private Message generate(UUID conversationId, GroundedPromptBuilder.PromptBundle bundle,
-                             Instant started) {
+    private GeneratedAnswer generate(UUID conversationId,
+                                     GroundedPromptBuilder.PromptBundle bundle,
+                                     Instant started) {
         long tg = System.currentTimeMillis();
         log.info("chat.generate.modelCall.start conversation={} model={} promptMessages={}",
                 conversationId, aiProperties.chatModel(), bundle.prompt().getInstructions().size());
@@ -299,17 +315,16 @@ private void autoTitle(Conversation conversation, String question) {
         long latencyMs = Duration.between(started, Instant.now()).toMillis();
 
         Usage usage = response.getMetadata().getUsage();
-        Integer promptTokens = usage == null ? null : usage.getPromptTokens();
-        Integer completionTokens = usage == null ? null : usage.getCompletionTokens();
+        return new GeneratedAnswer(answer,
+                usage == null ? null : usage.getPromptTokens(),
+                usage == null ? null : usage.getCompletionTokens(),
+                latencyMs);
+    }
 
-        Message assistant = completeAssistant(conversationId, aiProperties.chatModel(),
-                answer, promptTokens, completionTokens, latencyMs);
-        messageRepository.save(assistant);
-
-        log.info("Assistant message {} for conversation {}: {} chars, {} evidence passages, {} ms",
-                assistant.getId(), conversationId, answer.length(),
-                bundle.evidence().size(), latencyMs);
-        return assistant;
+    private record GeneratedAnswer(String content,
+                                   Integer promptTokens,
+                                   Integer completionTokens,
+                                   long latencyMs) {
     }
 
     /** Last {@code rag.history-messages} turns, oldest first, to give context. */
@@ -338,16 +353,18 @@ private void autoTitle(Conversation conversation, String question) {
         return assistant;
     }
 
-    private List<CitationDto> persistCitations(UUID messageId, List<RetrievedChunkRow> evidence) {
-        List<CitationDto> dtos = new ArrayList<>(evidence.size());
-        for (int i = 0; i < evidence.size(); i++) {
-            RetrievedChunkRow chunk = evidence.get(i);
-            Citation citation = Citation.create(UUID.randomUUID(), messageId, i + 1,
+    private List<CitationDto> persistCitations(
+            UUID messageId, List<CitationMarkerResolver.CitedPassage> citedPassages) {
+        List<CitationDto> dtos = new ArrayList<>(citedPassages.size());
+        for (CitationMarkerResolver.CitedPassage cited : citedPassages) {
+            RetrievedChunkRow chunk = cited.passage();
+            Citation citation = Citation.create(UUID.randomUUID(), messageId, cited.ordinal(),
                     chunk.documentId(), chunk.filename(), chunk.chunkId(),
                     chunk.pageNumber(), chunk.section(), chunk.similarity(), chunk.content());
             citationRepository.save(citation);
-            dtos.add(new CitationDto(i + 1, chunk.documentId(), chunk.filename(), chunk.chunkId(),
-                    chunk.pageNumber(), chunk.section(), chunk.similarity(), chunk.content()));
+            dtos.add(new CitationDto(cited.ordinal(), chunk.documentId(), chunk.filename(),
+                    chunk.chunkId(), chunk.pageNumber(), chunk.section(), chunk.similarity(),
+                    chunk.content()));
         }
         return dtos;
     }
@@ -379,16 +396,29 @@ private void autoTitle(Conversation conversation, String question) {
                                                          Instant started) {
         long latencyMs = Duration.between(started, Instant.now()).toMillis();
         Usage usage = usageOf(last);
-        assistant.complete(answer,
+        CitationMarkerResolver.Resolution resolved = CitationMarkerResolver.resolve(
+                answer, evidence, ragProperties.noEvidenceAnswer());
+        assistant.complete(resolved.content(),
                 usage == null ? null : usage.getPromptTokens(),
                 usage == null ? null : usage.getCompletionTokens(),
                 latencyMs);
         messageRepository.save(assistant);
 
-        List<CitationDto> citations = persistCitations(assistant.getId(), evidence);
-        log.info("Streamed assistant message {} for conversation {}: {} chars, {} evidence passages, {} ms",
-                assistant.getId(), assistant.getConversationId(), answer.length(),
-                evidence.size(), latencyMs);
+        if (!resolved.hasCitations()) {
+            meterRegistry.counter("veridoc.rag.refusals").increment();
+            log.info("Streamed answer rejected for message {}: markers={} invalid={} evidenceUsed={}",
+                    assistant.getId(), resolved.markerCount(), resolved.invalidMarkerCount(),
+                    evidence.size());
+            // Tokens have already been sent. The terminal done event carries the
+            // corrected persisted answer, which the client renders instead.
+            return Flux.just(sse("done", toResponse(assistant, List.of())));
+        }
+
+        List<CitationDto> citations = persistCitations(assistant.getId(), resolved.citedPassages());
+        meterRegistry.counter("veridoc.rag.citations").increment(citations.size());
+        log.info("Streamed assistant message {} for conversation {}: {} chars, {} citations, {} ms",
+                assistant.getId(), assistant.getConversationId(), resolved.content().length(),
+                citations.size(), latencyMs);
         return Flux.just(
                 sse("citations", new StreamCitations(citations)),
                 sse("done", toResponse(assistant, citations)));

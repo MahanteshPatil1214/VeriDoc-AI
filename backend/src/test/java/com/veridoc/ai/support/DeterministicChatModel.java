@@ -39,8 +39,25 @@ public class DeterministicChatModel implements ChatModel {
             answer = "No passages were provided to me.";
         } else {
             answer = "Based on the uploaded documents, I can confirm: " + truncate(passages.get(0));
+            String user = lastInstructionText(prompt);
+            if (user.contains("NO_CITATION")) {
+                // Exercise the citation policy: a plausible but uncited answer.
+            } else if (user.contains("OUT_OF_RANGE_CITATION")) {
+                answer += " [99]";
+            } else {
+                answer += " [1]";
+            }
         }
         return new ChatResponse(List.of(new Generation(new AssistantMessage(answer))));
+    }
+
+    private static String lastInstructionText(Prompt prompt) {
+        List<Message> instructions = prompt.getInstructions();
+        if (instructions.isEmpty()) {
+            return "";
+        }
+        String text = instructions.get(instructions.size() - 1).getText();
+        return text == null ? "" : text;
     }
 
     /**

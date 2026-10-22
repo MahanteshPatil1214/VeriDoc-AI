@@ -54,18 +54,15 @@ public final class AuthDtos {
     }
 
     /**
-     * Self-service password reset. The account is identified by email and the
-     * caller supplies the replacement password directly; there is no email
-     * channel in this deployment, so no reset link is sent. The endpoint always
-     * answers {@code 204} so it cannot be used to discover registered accounts.
+     * Authenticated credential change. The current password is required even
+     * though the caller already holds a valid access token.
      */
-    @Schema(name = "ForgotPasswordRequest")
-    public record ForgotPasswordRequest(
+    @Schema(name = "ChangePasswordRequest")
+    public record ChangePasswordRequest(
 
-            @NotBlank(message = "email is required")
-            @Email(message = "email must be a valid address")
-            @Size(max = 320, message = "email must not exceed 320 characters")
-            String email,
+            @NotBlank(message = "currentPassword is required")
+            @Size(max = 128, message = "currentPassword must not exceed 128 characters")
+            String currentPassword,
 
             @NotBlank(message = "newPassword is required")
             @Size(min = 12, max = 128,

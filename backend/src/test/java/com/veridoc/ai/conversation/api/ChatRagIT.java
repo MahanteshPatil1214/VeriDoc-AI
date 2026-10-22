@@ -42,6 +42,8 @@ class ChatRagIT extends AbstractPostgresIntegrationTest {
     private static final String PASSWORD = "correct horse battery";
     private static final String GROUNDED_QUERY =
             "VeriDoc AI verifies claims against uploaded source documents";
+    private static final String REFUSAL =
+            "I couldn't find enough information in the uploaded documents to answer that.";
 
     @Autowired
     private MockMvc mockMvc;
@@ -116,6 +118,37 @@ class ChatRagIT extends AbstractPostgresIntegrationTest {
                 .andExpect(jsonPath("$.documents[0].id").value(docId.toString()))
                 .andReturn().getResponse().getContentAsString();
         assertThat(detailBody).contains("contract.pdf");
+    }
+
+    @Test
+    @DisplayName("an answer with no citation markers is replaced by the refusal and cites nothing")
+    void answerWithoutMarkersFailsClosed() throws Exception {
+        String token = tokenForNewUser();
+        UUID docId = uploadAndAwaitReady(token, "uncited.pdf");
+        UUID conversationId = createConversation(token, "Uncited answer");
+        attach(token, conversationId, docId);
+
+        JsonNode response = ask(token, conversationId, GROUNDED_QUERY + " NO_CITATION");
+
+        assertThat(response.get("status").asText()).isEqualTo("COMPLETE");
+        assertThat(response.get("content").asText()).isEqualTo(REFUSAL);
+        assertThat(response.get("citations")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("an out-of-range marker never creates a fabricated source")
+    void outOfRangeMarkerFailsClosed() throws Exception {
+        String token = tokenForNewUser();
+        UUID docId = uploadAndAwaitReady(token, "invalid-citation.pdf");
+        UUID conversationId = createConversation(token, "Invalid citation");
+        attach(token, conversationId, docId);
+
+        JsonNode response = ask(token, conversationId,
+                GROUNDED_QUERY + " OUT_OF_RANGE_CITATION");
+
+        assertThat(response.get("status").asText()).isEqualTo("COMPLETE");
+        assertThat(response.get("content").asText()).isEqualTo(REFUSAL);
+        assertThat(response.get("citations")).isEmpty();
     }
 
     @Test

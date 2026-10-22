@@ -29,6 +29,7 @@ public class JwtTokenService {
     private static final String CLAIM_TYPE = "typ";
     private static final String CLAIM_USER_ID = "uid";
     private static final String CLAIM_ROLE = "rol";
+    private static final String CLAIM_TOKEN_VERSION = "ver";
 
     private static final String TYPE_ACCESS = "access";
     private static final String TYPE_REFRESH = "refresh";
@@ -69,6 +70,7 @@ public class JwtTokenService {
                 .subject(user.email())
                 .claim(CLAIM_USER_ID, user.userId().toString())
                 .claim(CLAIM_ROLE, user.role().name())
+                .claim(CLAIM_TOKEN_VERSION, user.tokenVersion())
                 .claim(CLAIM_TYPE, type)
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plus(ttl)))
@@ -103,7 +105,11 @@ public class JwtTokenService {
         } catch (RuntimeException e) {
             role = Role.USER;
         }
-        return new AuthenticatedUser(userId, claims.getSubject(), role);
+        // Tokens issued before token_version existed default to epoch 0, which
+        // matches the column default for existing accounts.
+        Object rawVersion = claims.get(CLAIM_TOKEN_VERSION);
+        long tokenVersion = rawVersion instanceof Number number ? number.longValue() : 0L;
+        return new AuthenticatedUser(userId, claims.getSubject(), role, tokenVersion);
     }
 
     private Claims parseClaims(String token) {

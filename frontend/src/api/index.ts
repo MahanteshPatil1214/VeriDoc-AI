@@ -23,7 +23,6 @@ export type {
   AuthResponse,
   LoginRequest,
   RegisterRequest,
-  ForgotPasswordRequest,
   User,
   ApiProblem,
   Conversation,

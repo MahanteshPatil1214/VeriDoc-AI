@@ -18,9 +18,7 @@ public record RateLimitProperties(
 
         @DefaultValue("60/PT1H") String chat,
 
-        @DefaultValue("30/PT1H") String processing,
-
-        @DefaultValue("5/PT15M") String forgotPassword
+        @DefaultValue("30/PT1H") String processing
 ) {
     public RateLimitProperties {
         if (enabled) {
@@ -28,7 +26,6 @@ public record RateLimitProperties(
             require(upload, "upload");
             require(chat, "chat");
             require(processing, "processing");
-            require(forgotPassword, "forgot-password");
         }
     }
 
