@@ -323,6 +323,12 @@
                                  any existing check. -->
                             <includes combine.children="append">
                                 <include>**/LiveProviderEvaluation.java</include>
+                                <!-- The credential probe is a separate entry
+                                     point: two authenticated calls, no dataset
+                                     and no application context. Named so that
+                                     it matches neither *Test nor *IT, i.e. it
+                                     can only run through this profile. -->
+                                <include>**/LiveProviderCredentialProbe.java</include>
                             </includes>
                             <systemPropertyVariables>
                                 <veridoc.eval.live.profile>${veridoc.eval.live.profile}</veridoc.eval.live.profile>

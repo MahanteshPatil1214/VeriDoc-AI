@@ -108,6 +108,7 @@ spring:
         embedding:
           api-key: ${GEMINI_API_KEY:}
           text:
+            dimensions: ${GEMINI_EMBEDDING_DIMENSIONS:768}
             options:
               model: ${GEMINI_EMBEDDING_MODEL:gemini-embedding-001}
               dimensions: ${GEMINI_EMBEDDING_DIMENSIONS:768}
