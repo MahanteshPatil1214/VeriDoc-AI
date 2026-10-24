@@ -20,6 +20,9 @@ import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.embedding.EmbeddingOptions;
 import org.springframework.ai.embedding.EmbeddingRequest;
 import org.springframework.ai.embedding.EmbeddingResponse;
+import org.springframework.ai.google.genai.embedding.GoogleGenAiEmbeddingConnectionDetails;
+import org.springframework.ai.google.genai.text.GoogleGenAiTextEmbeddingModel;
+import org.springframework.ai.google.genai.text.GoogleGenAiTextEmbeddingOptions;
 
 import reactor.core.publisher.Flux;
 
@@ -169,6 +172,35 @@ class LiveEvalBudgetedModelsTest {
 
         assertThat(delegate.dimensionsCalls()).isEqualTo(1);
         assertThat(budget.embeddingCalls()).isZero();
+    }
+
+    @Test
+    @DisplayName("embedding: dimensions() honors configured options on GoogleGenAiTextEmbeddingModel")
+    void geminiDimensionsHonorConfiguredOptions() {
+        GoogleGenAiEmbeddingConnectionDetails connection = GoogleGenAiEmbeddingConnectionDetails.builder()
+                .apiKey("test-key")
+                .build();
+        GoogleGenAiTextEmbeddingOptions options = GoogleGenAiTextEmbeddingOptions.builder()
+                .model("gemini-embedding-001")
+                .dimensions(768)
+                .build();
+        GoogleGenAiTextEmbeddingModel geminiDelegate = new GoogleGenAiTextEmbeddingModel(connection, options);
+        LiveEvalBudget budget = new LiveEvalBudget(10, 10, 1, Duration.ofMinutes(1));
+        BudgetedEmbeddingModel model = new BudgetedEmbeddingModel(geminiDelegate, budget);
+
+        // Raw delegate reports 3072 due to Spring AI's hardcoded lookup table
+        assertThat(geminiDelegate.dimensions()).isEqualTo(3072);
+
+        // Budgeted decorator resolves to configured width (768)
+        assertThat(model.dimensions()).isEqualTo(768);
+
+        // LiveEvalIngestion accepts the model with expected 768 dimensions
+        LiveEvalIngestion.requireLiveEmbeddingModel(model, 768);
+
+        // LiveEvalIngestion rejects mismatched expected width
+        assertThatThrownBy(() -> LiveEvalIngestion.requireLiveEmbeddingModel(model, 1536))
+                .isInstanceOf(LiveEvalIngestionException.class)
+                .hasMessageContaining("reports width 768 but the store expects 1536");
     }
 
     @Test

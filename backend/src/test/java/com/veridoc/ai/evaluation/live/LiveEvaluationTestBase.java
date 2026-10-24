@@ -106,6 +106,17 @@ public abstract class LiveEvaluationTestBase {
         registry.add("spring.flyway.locations", () -> "classpath:db/migration");
     }
 
+    static String[] liveInfrastructureArguments() {
+        return new String[] {
+                "--spring.datasource.url=" + LiveInfrastructure.postgres().getJdbcUrl(),
+                "--spring.datasource.username=" + LiveInfrastructure.postgres().getUsername(),
+                "--spring.datasource.password=" + LiveInfrastructure.postgres().getPassword(),
+                "--spring.data.redis.url=redis://" + LiveInfrastructure.redis().getHost()
+                        + ":" + LiveInfrastructure.redis().getMappedPort(6379),
+                "--spring.flyway.locations=classpath:db/migration"
+        };
+    }
+
     /**
      * The containers the live run needs, started lazily.
      *

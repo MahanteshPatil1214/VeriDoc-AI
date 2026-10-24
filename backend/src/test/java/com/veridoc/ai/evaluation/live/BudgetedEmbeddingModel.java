@@ -6,6 +6,7 @@ import org.springframework.ai.document.Document;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.embedding.EmbeddingRequest;
 import org.springframework.ai.embedding.EmbeddingResponse;
+import org.springframework.ai.google.genai.text.GoogleGenAiTextEmbeddingModel;
 
 /**
  * An {@link EmbeddingModel} that charges the shared budget before delegating.
@@ -18,12 +19,10 @@ import org.springframework.ai.embedding.EmbeddingResponse;
  * {@link EmbeddingModel} in terms of {@link #call(EmbeddingRequest)}, so each
  * is charged exactly once and never twice.
  *
- * <p>{@link #dimensions()} is <strong>not</strong> charged: it is metadata. The
- * production Gemini embedding model reports the configured dimensionality
- * without contacting the provider, and this codebase never resolves dimensions
- * through the model (they come from {@code EmbeddingProperties}). Delegating it
- * directly keeps a context-initialisation probe from silently consuming an
- * embedding slot.
+ * <p>{@link #dimensions()} is <strong>not</strong> charged: it is metadata. Spring AI's
+ * Gemini embedding model hardcodes gemini-embedding-001 to 3072 in its static lookup table
+ * and ignores runtime options. When the delegate is configured with an explicit output dimension
+ * (e.g. 768), this decorator reports that configured width.
  *
  * <p>Like {@link BudgetedChatModel} it is a plain decorator: no Spring
  * annotation, public constructor, installed only by the live context factory.
@@ -58,6 +57,11 @@ public final class BudgetedEmbeddingModel implements EmbeddingModel {
     @Override
     public int dimensions() {
         // Metadata, not a provider call on the production model.
+        if (delegate instanceof GoogleGenAiTextEmbeddingModel geminiModel
+                && geminiModel.options != null
+                && geminiModel.options.getDimensions() != null) {
+            return geminiModel.options.getDimensions();
+        }
         return delegate.dimensions();
     }
 
