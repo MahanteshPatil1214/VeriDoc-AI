@@ -1,7 +1,9 @@
 package com.veridoc.ai.rag;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,12 +22,18 @@ import com.veridoc.ai.infrastructure.config.EmbeddingOptionsFactory;
 import com.veridoc.ai.infrastructure.vector.PgVectorChunkRepository;
 
 /**
- * Authorized vector retrieval.
+ * Authorized hybrid retrieval: vector (pgvector cosine) + keyword
+ * (PostgreSQL tsvector / ts_rank_cd, i.e. BM25-equivalent).
  *
  * <p>Ownership is enforced structurally: the conversation must belong to the
  * caller and only chunks of {@code READY} documents attached to that
  * conversation are searched — in the same SQL statement. No "retrieve all,
  * then filter" path exists.
+ *
+ * <p>When {@code veridoc.retrieval.keyword-enabled} is {@code true}, results
+ * from both searches are merged by chunk id and re-ranked using a weighted
+ * combination of cosine similarity and keyword rank:
+ * {@code hybridScore = vectorWeight * similarity + keywordWeight * keywordRank}.
  */
 @Service
 public class RetrievalService {
@@ -57,7 +65,7 @@ public class RetrievalService {
     }
 
     /**
-     * Retrieves the most similar chunks for {@code query} among the READY
+     * Retrieves the most relevant chunks for {@code query} among the READY
      * documents attached to {@code conversationId}. Rows below the similarity
      * threshold are dropped so that an unsupported question yields no evidence
      * and the chat layer can respond with the canonical "no evidence" answer.
@@ -95,17 +103,83 @@ public class RetrievalService {
                 System.currentTimeMillis() - te, queryVector.length);
 
         long ts = System.currentTimeMillis();
-        List<RetrievedChunkRow> candidates = pgVectorChunkRepository.similaritySearch(
+        List<RetrievedChunkRow> vectorCandidates = pgVectorChunkRepository.similaritySearch(
                 ownerId, documentIds, queryVector,
                 embeddingProperties.model(), embeddingProperties.version(),
                 retrievalProperties.candidateK());
-        log.info("retrieval.search.done elapsedMs={} candidates={} docs={}",
-                System.currentTimeMillis() - ts, candidates.size(), documentIds.size());
 
-        return candidates.stream()
-                .filter(row -> row.similarity() >= retrievalProperties.minScore())
+        List<RetrievedChunkRow> keywordCandidates = List.of();
+        if (retrievalProperties.keywordEnabled()) {
+            long tk = System.currentTimeMillis();
+            keywordCandidates = pgVectorChunkRepository.keywordSearch(
+                    ownerId, documentIds, effectiveQuery,
+                    embeddingProperties.model(), embeddingProperties.version(),
+                    retrievalProperties.keywordCandidateK());
+            log.info("retrieval.keyword.done elapsedMs={} candidates={}",
+                    System.currentTimeMillis() - tk, keywordCandidates.size());
+        }
+
+        List<RetrievedChunkRow> merged = mergeAndRank(vectorCandidates, keywordCandidates);
+        log.info("retrieval.search.done elapsedMs={} vectorCandidates={} keywordCandidates={} merged={} docs={}",
+                System.currentTimeMillis() - ts, vectorCandidates.size(),
+                keywordCandidates.size(), merged.size(), documentIds.size());
+
+        double vectorWeight = retrievalProperties.normalisedVectorWeight();
+        double keywordWeight = retrievalProperties.normalisedKeywordWeight();
+        return merged.stream()
+                .filter(row -> row.hybridScore(vectorWeight, keywordWeight) >= retrievalProperties.minScore())
                 .limit(retrievalProperties.topK())
                 .toList();
+    }
+
+    /**
+     * Merges vector and keyword candidate lists by chunk id, computing a
+     * combined hybrid score for each chunk. Chunks found by only one search
+     * still receive a score (the missing component contributes zero).
+     */
+    private List<RetrievedChunkRow> mergeAndRank(
+            List<RetrievedChunkRow> vectorCandidates,
+            List<RetrievedChunkRow> keywordCandidates) {
+
+        Map<UUID, RetrievedChunkRow> byId = new java.util.LinkedHashMap<>();
+
+        for (RetrievedChunkRow row : vectorCandidates) {
+            byId.merge(row.chunkId(), row, (existing, replacement) -> {
+                // Prefer the vector row (has a real distance); keep keywordRank if present.
+                double kr = replacement.keywordRank() != 0.0d ? replacement.keywordRank()
+                        : existing.keywordRank();
+                return new RetrievedChunkRow(
+                        existing.chunkId(), existing.documentId(), existing.versionId(),
+                        existing.chunkIndex(), existing.content(), existing.pageNumber(),
+                        existing.section(), existing.tokenCount(), existing.contentHash(),
+                        existing.filename(), existing.distance(), kr);
+            });
+        }
+
+        for (RetrievedChunkRow row : keywordCandidates) {
+            byId.merge(row.chunkId(), row, (existing, replacement) -> {
+                // Prefer the existing row (has vector distance); take keywordRank from replacement.
+                double kr = replacement.keywordRank();
+                double dist = existing.distance() != 0.0d ? existing.distance() : 0.0d;
+                return new RetrievedChunkRow(
+                        existing.chunkId(), existing.documentId(), existing.versionId(),
+                        existing.chunkIndex(), existing.content(), existing.pageNumber(),
+                        existing.section(), existing.tokenCount(), existing.contentHash(),
+                        existing.filename(), dist, kr);
+            });
+        }
+
+        return byId.values().stream()
+                .sorted((a, b) -> {
+                    double va = a.hybridScore(
+                            retrievalProperties.normalisedVectorWeight(),
+                            retrievalProperties.normalisedKeywordWeight());
+                    double vb = b.hybridScore(
+                            retrievalProperties.normalisedVectorWeight(),
+                            retrievalProperties.normalisedKeywordWeight());
+                    return Double.compare(vb, va); // descending
+                })
+                .collect(Collectors.toList());
     }
 
     private double[] embedQuery(String query) {

@@ -34,10 +34,20 @@ public record RetrievedChunkRow(
 
         @Column(name = "filename") String filename,
 
-        @Column(name = "distance") double distance
+        @Column(name = "distance") double distance,
+
+        @Column(name = "keyword_rank") double keywordRank
 ) {
     /** Cosine distance in [0,2]; converted to a similarity in [-1,1]. */
     public double similarity() {
         return 1.0d - distance;
+    }
+
+    /**
+     * Combined hybrid score: {@code vectorWeight * similarity + keywordWeight * keywordRank}.
+     * Computed by the retrieval layer after both searches have run.
+     */
+    public double hybridScore(double vectorWeight, double keywordWeight) {
+        return vectorWeight * similarity() + keywordWeight * keywordRank;
     }
 }

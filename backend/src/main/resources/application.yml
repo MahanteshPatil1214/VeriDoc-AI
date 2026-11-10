@@ -164,6 +164,12 @@ veridoc:
     min-score: ${RETRIEVAL_MIN_SCORE:0.15}
     candidate-k: ${RETRIEVAL_CANDIDATE_K:40}
     max-documents-per-conversation: ${RETRIEVAL_MAX_DOCS:20}
+    # Hybrid search: keyword (BM25 via PostgreSQL tsvector) alongside vector.
+    keyword-enabled: ${RETRIEVAL_KEYWORD_ENABLED:true}
+    keyword-candidate-k: ${RETRIEVAL_KEYWORD_CANDIDATE_K:20}
+    # Weights for hybrid re-ranking: vectorWeight * similarity + keywordWeight * keywordRank.
+    vector-weight: ${RETRIEVAL_VECTOR_WEIGHT:0.7}
+    keyword-weight: ${RETRIEVAL_KEYWORD_WEIGHT:0.3}
 
   rag:
     history-messages: ${RAG_HISTORY_MESSAGES:8}

@@ -99,7 +99,80 @@ public class PgVectorChunkRepository {
                 rs.getInt("token_count"),
                 rs.getString("content_hash"),
                 rs.getString("filename"),
-                rs.getDouble("distance")));
+                rs.getDouble("distance"),
+                0.0d));
+    }
+
+    /**
+     * Full-text (BM25-style) search restricted to one owner and an explicit set
+     * of authorized documents. Uses PostgreSQL tsvector + ts_rank_cd, which is
+     * PostgreSQL's BM25-equivalent ranking for full-text search.
+     *
+     * @param ownerId          the authenticated user; mandatory
+     * @param documentIds      documents attached to the conversation; mandatory
+     * @param query            raw user query text
+     * @param model            embedding model filter; prevents cross-model search
+     * @param embeddingVersion embedding version filter
+     * @param limit            top-k
+     */
+    @Transactional(readOnly = true)
+    public List<RetrievedChunkRow> keywordSearch(UUID ownerId,
+                                                 Collection<UUID> documentIds,
+                                                 String query,
+                                                 String model,
+                                                 Integer embeddingVersion,
+                                                 int limit) {
+        if (documentIds == null || documentIds.isEmpty()) {
+            return List.of();
+        }
+        String sql = """
+                SELECT c.id                       AS id,
+                       c.document_id              AS document_id,
+                       c.version_id               AS version_id,
+                       c.chunk_index              AS chunk_index,
+                       c.content                  AS content,
+                       c.page_number              AS page_number,
+                       c.section                  AS section,
+                       c.token_count              AS token_count,
+                       c.content_hash             AS content_hash,
+                       d.filename                 AS filename,
+                       1.0d                       AS distance,
+                       ts_rank_cd(c.search_vector, plainto_tsquery('english', :query))
+                                                        AS keyword_rank
+                FROM document_chunks c
+                JOIN documents d ON d.id = c.document_id
+                WHERE c.owner_id = :ownerId
+                  AND c.document_id IN (:documentIds)
+                  AND d.status = 'READY'
+                  AND c.embedding_model = :model
+                  AND c.embedding_version = :embeddingVersion
+                  AND c.search_vector IS NOT NULL
+                  AND c.search_vector @@ plainto_tsquery('english', :query)
+                ORDER BY keyword_rank DESC
+                LIMIT :limit
+                """;
+
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("ownerId", ownerId)
+                .addValue("documentIds", documentIds)
+                .addValue("query", query)
+                .addValue("model", model)
+                .addValue("embeddingVersion", embeddingVersion)
+                .addValue("limit", limit);
+
+        return jdbc.query(sql, params, (rs, rowNum) -> new RetrievedChunkRow(
+                rs.getObject("id", UUID.class),
+                rs.getObject("document_id", UUID.class),
+                rs.getObject("version_id", UUID.class),
+                rs.getInt("chunk_index"),
+                rs.getString("content"),
+                (Integer) rs.getObject("page_number"),
+                rs.getString("section"),
+                rs.getInt("token_count"),
+                rs.getString("content_hash"),
+                rs.getString("filename"),
+                rs.getDouble("distance"),
+                rs.getDouble("keyword_rank")));
     }
 
     /**

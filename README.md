@@ -119,6 +119,23 @@ Configuration is externalized via `.env`. See `.env.example` for the full list o
 | `SERVER_PORT` | Backend port | `8080` |
 | `FRONTEND_PORT` | Frontend (nginx) host port | `8081` |
 
+### Hybrid search (vector + keyword / BM25)
+
+VeriDoc AI uses **hybrid retrieval**: every query runs both a **vector search** (pgvector cosine similarity over embeddings) and a **keyword search** (PostgreSQL `tsvector` / `ts_rank_cd`, i.e. BM25-equivalent full-text search) over the same authorized documents. Results are merged by chunk ID and re-ranked with a weighted combination:
+
+```
+hybridScore = vectorWeight * cosineSimilarity + keywordWeight * keywordRank
+```
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `RETRIEVAL_KEYWORD_ENABLED` | Enable keyword search alongside vector search | `true` |
+| `RETRIEVAL_KEYWORD_CANDIDATE_K` | Keyword candidates fetched before re-ranking | `20` |
+| `RETRIEVAL_VECTOR_WEIGHT` | Weight for the vector (cosine similarity) component | `0.7` |
+| `RETRIEVAL_KEYWORD_WEIGHT` | Weight for the keyword (BM25) component | `0.3` |
+
+Set `RETRIEVAL_KEYWORD_ENABLED=false` to use pure vector search. Adjust the weights to tune the balance between semantic and lexical relevance.
+
 Inside Docker Compose, the backend uses compose-service addresses (`postgres:5432`, `redis:6379`) and `STORAGE_ROOT=/app/data/storage` regardless of host `.env` values. The `.env` URLs apply to non-Docker runs.
 
 ---

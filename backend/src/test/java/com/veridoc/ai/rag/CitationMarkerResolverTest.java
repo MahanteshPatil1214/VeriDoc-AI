@@ -132,6 +132,6 @@ class CitationMarkerResolverTest {
                                            String content) {
         return new RetrievedChunkRow(
                 UUID.randomUUID(), documentId, UUID.randomUUID(), 0, content, page,
-                null, 6, "hash", filename, 0.1d);
+                null, 6, "hash", filename, 0.1d, 0.0d);
     }
 }

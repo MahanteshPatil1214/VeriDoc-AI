@@ -154,6 +154,7 @@ class GroundedPromptBuilderTest {
                 50,
                 "hash",
                 "doc.pdf",
-                0.1d);
+                0.1d,
+                0.0d);
     }
 }
