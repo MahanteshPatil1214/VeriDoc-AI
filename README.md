@@ -2,106 +2,193 @@
 
 # VeriDoc AI
 
-### Evidence-Grounded Document Intelligence
+### Evidence-Grounded Document Intelligence & Retrieval-Augmented Generation
 
 <p>
-Upload PDFs, ask questions in natural language, and get answers generated <b>only from your documents</b> — with inline citations you can verify. If the uploaded documents cannot support an answer, VeriDoc AI refuses instead of hallucinating.
+An enterprise-grade, privacy-first Retrieval-Augmented Generation (RAG) system engineered for <b>local development</b>. Upload PDFs, interact through real-time streaming conversations, and receive verifiable answers grounded strictly in your source documents — with inline citations down to the exact page and passage. If source documents do not contain the answer, VeriDoc AI explicitly refuses rather than hallucinating.
 </p>
 
-
-
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![CI](https://github.com/MahanteshPatil1214/VeriDoc-AI/actions/workflows/ci.yml/badge.svg)](https://github.com/MahanteshPatil1214/VeriDoc-AI/actions/workflows/ci.yml)
 [![Java 21](https://img.shields.io/badge/Java-21-007396?logo=java&logoColor=white)](https://adoptium.net/)
-[![Spring Boot 4.1](https://img.shields.io/badge/Spring%20Boot-4.1-6DB33F?logo=spring-boot&logoColor=white)](https://spring.io/projects/spring-boot)
+[![Spring Boot 3.4](https://img.shields.io/badge/Spring%20Boot-3.4-6DB33F?logo=spring-boot&logoColor=white)](https://spring.io/projects/spring-boot)
 [![React 19](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev/)
-[![Vite](https://img.shields.io/badge/Vite-latest-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![PostgreSQL 17](https://img.shields.io/badge/PostgreSQL-17-336791?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-[![pgvector](https://img.shields.io/badge/pgvector-latest-1A6BFF)](https://github.com/pgvector/pgvector)
+[![pgvector](https://img.shields.io/badge/pgvector-0.8+-1A6BFF)](https://github.com/pgvector/pgvector)
 [![Redis 7](https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white)](https://redis.io/)
-[![Docker Compose](https://img.shields.io/badge/Docker%20Compose-latest-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
-[![Groq](https://img.shields.io/badge/AI-Groq-000000)](https://groq.com/)
-[![Google Gemini](https://img.shields.io/badge/AI-Google%20Gemini-4285F4)](https://ai.google.dev/)
+[![Docker Compose](https://img.shields.io/badge/Docker%20Compose-v2-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
+
 </div>
 
 ---
 
-## What is VeriDoc AI?
+## Overview
 
-VeriDoc AI is a multi-user Retrieval-Augmented Generation (RAG) platform built for **local development**. It lets you upload PDF documents, attach them to conversations, and ask questions whose answers are grounded strictly in your uploaded content — complete with verifiable page-level citations.
+VeriDoc AI addresses the critical failure mode of enterprise LLMs: **ungrounded hallucinations**. Rather than treating language models as knowledge bases, VeriDoc AI treats them strictly as reasoning and synthesis engines over verified document evidence.
 
-The core product principle:
-
-> **"If the answer cannot be supported by the uploaded documents, VeriDoc AI must clearly say that the information could not be found instead of hallucinating an answer."**
-
-### Key features
-
-- **Upload & ingest** one or more PDFs — extracted, chunked, and embedded asynchronously
-- **Multi-turn chat** with streamed (SSE) answers and inline source citations (document, page, quoted text)
-- **Strict per-owner isolation** — users can only access their own documents and conversations
-- **Soft delete** drops vectors from retrieval while preserving the evidence trail of previous citations
-- **Duplicate detection** (user-aware SHA-256) avoids re-processing identical uploads
-- **Structured errors** with stable error codes — no internal stack traces exposed to users
-- **Backend-only AI keys** — Groq (chat) and Gemini (embeddings) are never exposed to the browser
+### Core Tenet
+> **"If an answer cannot be proven by the uploaded documents attached to the conversation, VeriDoc AI explicitly refuses to answer instead of guessing."**
 
 ---
 
-## Tech stack
+## Key Highlights
 
-| Layer | Technology |
-|-------|------------|
-| **Frontend** | React 19, Vite, TypeScript, TanStack Query, Zustand, hand-rolled Markdown |
-| **Backend** | Java 21, Spring Boot 4.1, Spring AI, WebFlux (streaming) |
-| **Database** | PostgreSQL 17 + pgvector |
-| **Cache** | Redis 7 (rate-limit counters) |
-| **AI** | Groq (chat), Google Gemini (embeddings) |
-| **Infra** | Docker Compose, nginx (frontend) |
+- **Hybrid Retrieval Architecture**: Combines PostgreSQL `pgvector` HNSW cosine similarity search with PostgreSQL full-text search (`tsvector` with BM25-equivalent `ts_rank_cd`), merging and re-ranking candidates for both semantic and lexical relevance.
+- **Verifiable Citations**: Answers contain inline citation pills referencing the specific document, version, and page number, complete with the excerpted evidence.
+- **Strict Multi-Tenant Isolation**: Row-level security semantics ensure queries and document chunks are partitioned by authenticated owner identity directly in SQL queries.
+- **Streaming Multi-Turn Dialogue**: Low-latency Server-Sent Events (SSE) streaming answers directly into a responsive chat workspace.
+- **Robust Ingestion Pipeline**: Asynchronous PDF extraction via Apache Tika, token-aware chunking with sliding windows, duplicate detection via content SHA-256, and batch vector generation.
+- **Security-First Boundary**: AI credentials (Groq and Google Gemini) remain securely on the backend; the browser interface never receives API tokens.
 
 ---
 
-## Quick start — local development
+## Architectural Flow
+
+```
++-------------------------------------------------------------------------------+
+|                             INGESTION WORKFLOW                                |
+|                                                                               |
+|  [PDF Upload] -> [SHA-256 Check] -> [Apache Tika Parse] -> [Token Chunker]    |
+|                                                                   |           |
+|  [HNSW Vector Index] <- [pgvector] <- [Gemini Embeddings] <-------+           |
+|          +                                                                    |
+|  [GIN Keyword Index] <- [PostgreSQL tsvector Trigger]                         |
++-------------------------------------------------------------------------------+
+
++-------------------------------------------------------------------------------+
+|                              QUERY & RAG WORKFLOW                             |
+|                                                                               |
+|  [User Question] -> [Standalone Query Rewrite]                                 |
+|                            |                                                  |
+|              +-------------+-------------+                                    |
+|              |                           |                                    |
+|    [Vector Search (Cosine)]    [Full-Text Search (BM25)]                      |
+|              |                           |                                    |
+|              +-------------+-------------+                                    |
+|                            |                                                  |
+|               [Hybrid Candidate Merger & Re-ranker]                           |
+|                            |                                                  |
+|                 [Relevance Threshold Filter]                                  |
+|                            |                                                  |
+|          +-----------------+-----------------+                                |
+|          | (Evidence found)                  | (Insufficient evidence)        |
+|          v                                   v                                |
+|  [Grounded Prompt Assembly]         [Canonical Refusal]                       |
+|          |                                                                    |
+|  [Groq LLM Streaming] -> [SSE Stream + Inline Page Citations]                |
++-------------------------------------------------------------------------------+
+```
+
+---
+
+## Technology Stack
+
+| Domain | Technology | Description |
+| :--- | :--- | :--- |
+| **Frontend** | React 19, TypeScript, Vite, TailwindCSS | High-performance SPA with client-side state via TanStack Query & Zustand |
+| **Backend** | Java 21, Spring Boot 3.4, Spring AI | Enterprise service layer with reactive streaming endpoints |
+| **Data & Vectors** | PostgreSQL 17 + `pgvector` | Relational metadata storage alongside HNSW vector indexing |
+| **Text Search** | PostgreSQL `tsvector` + GIN Index | Lexical search using BM25 cover-density ranking |
+| **Caching** | Redis 7 Alpine | Fast rate-limiting and session verification |
+| **Embeddings** | Google Gemini (`gemini-embedding-001`) | High-dimensional semantic embeddings |
+| **Language Model** | Groq (`openai/gpt-oss-120b` or LLaMA models) | Ultra-fast token generation for streaming responses |
+| **DevOps** | Docker Compose | Complete containerized local development environment |
+
+---
+
+## Getting Started (Local Development)
 
 ### Prerequisites
 
-- Docker Desktop (or Docker Engine + Compose v2)
-- A [Groq API key](https://console.groq.com/keys) for chat
-- A [Google Gemini API key](https://aistudio.google.com) for embeddings
+1. **Docker Desktop** (or Docker Engine 24+ and Docker Compose v2)
+2. **Groq API Key**: [console.groq.com/keys](https://console.groq.com/keys)
+3. **Google Gemini API Key**: [aistudio.google.com](https://aistudio.google.com)
 
-### 1. Clone and configure
+---
+
+### Step 1: Clone the Repository
 
 ```bash
-git clone https://github.com/your-org/veridoc-ai.git
-cd veridoc-ai
+git clone https://github.com/MahanteshPatil1214/VeriDoc-AI.git
+cd VeriDoc-AI
+```
+
+---
+
+### Step 2: Configure Environment Variables
+
+Create your local `.env` configuration file from the template:
+
+```bash
 cp .env.example .env
 ```
 
-Edit `.env` and set at least:
+Open `.env` in your editor and configure your credentials:
 
-- `GROQ_API_KEY` — your Groq chat key
-- `GEMINI_API_KEY` — your Gemini embeddings key
-- `JWT_SECRET` — at least 32 bytes (`openssl rand -base64 48`)
+```ini
+# AI Provider Keys
+GROQ_API_KEY=gsk_your_groq_api_key_here
+GEMINI_API_KEY=your_gemini_api_key_here
 
-> **Never commit `.env`.** It is gitignored and contains local secrets.
+# Security Key (Generate a random 32+ byte string)
+JWT_SECRET=super-secret-jwt-signing-key-minimum-32-characters-long
 
-### 2. Start the stack
+# Local Ports (Optional defaults)
+SERVER_PORT=8080
+FRONTEND_PORT=8081
+```
+
+> **Security Note:** `.env` is ignored by Git and should never be checked into version control.
+
+---
+
+### Step 3: Run the Full Stack with Docker Compose
+
+Launch the complete application environment (PostgreSQL with pgvector, Redis, Spring Boot backend, and React frontend):
 
 ```bash
 docker compose up -d --build
 ```
 
-This starts PostgreSQL + pgvector, Redis, the backend (port 8080), and the nginx-served frontend (port 8081).
-
-Open <http://localhost:8081>. nginx proxies `/api` to the backend on the same origin, so no CORS configuration is required.
-
-### 3. Run services individually
-
-**Backend only** (against compose services):
+Monitor container health and startup logs:
 
 ```bash
-docker compose up -d --build backend
+docker compose logs -f
 ```
 
-**Frontend only** (Vite dev server, proxies `/api` → `http://localhost:8080`):
+Once running, access the user interface in your browser:
+
+- **Web Application Workspace**: [http://localhost:8081](http://localhost:8081)
+- **Backend Health Endpoint**: [http://localhost:8080/actuator/health](http://localhost:8080/actuator/health)
+
+To tear down the containers:
+
+```bash
+docker compose down
+```
+
+---
+
+## Running Services Standalone (Without Full Docker)
+
+For faster iterative development, run the dependencies in Docker and the apps directly on your host machine:
+
+### 1. Start Infrastructure Only
+
+```bash
+docker compose up -d postgres redis
+```
+
+### 2. Run Backend (Java 21 + Maven)
+
+```bash
+cd backend
+mvn spring-boot:run
+```
+
+The backend starts at `http://localhost:8080`.
+
+### 3. Run Frontend (Node.js 20+ / npm)
 
 ```bash
 cd frontend
@@ -109,144 +196,94 @@ npm install
 npm run dev
 ```
 
----
-
-## Configuration
-
-Configuration is externalized via `.env`. See `.env.example` for the full list of variables with defaults.
-
-| Variable | Purpose | Default |
-|----------|---------|---------|
-| `DATABASE_URL` | JDBC URL for PostgreSQL | `jdbc:postgresql://localhost:5432/veridoc` |
-| `REDIS_URL` | Redis connection URL | `redis://localhost:6379` |
-| `GROQ_API_KEY` | Groq chat API key (backend only) | — required |
-| `GEMINI_API_KEY` | Gemini embeddings API key (backend only) | — required |
-| `JWT_SECRET` | JWT signing secret (≥ 32 bytes) | — required |
-| `STORAGE_ROOT` | Directory for uploaded PDFs | `./data/storage` |
-| `SERVER_PORT` | Backend port | `8080` |
-| `FRONTEND_PORT` | Frontend (nginx) host port | `8081` |
-
-### Hybrid search (vector + keyword / BM25)
-
-VeriDoc AI uses **hybrid retrieval**: every query runs both a **vector search** (pgvector cosine similarity over embeddings) and a **keyword search** (PostgreSQL `tsvector` / `ts_rank_cd`, i.e. BM25-equivalent full-text search) over the same authorized documents. Results are merged by chunk ID and re-ranked with a weighted combination:
-
-```
-hybridScore = vectorWeight * cosineSimilarity + keywordWeight * keywordRank
-```
-
-| Variable | Purpose | Default |
-|----------|---------|---------|
-| `RETRIEVAL_KEYWORD_ENABLED` | Enable keyword search alongside vector search | `true` |
-| `RETRIEVAL_KEYWORD_CANDIDATE_K` | Keyword candidates fetched before re-ranking | `20` |
-| `RETRIEVAL_VECTOR_WEIGHT` | Weight for the vector (cosine similarity) component | `0.7` |
-| `RETRIEVAL_KEYWORD_WEIGHT` | Weight for the keyword (BM25) component | `0.3` |
-
-Set `RETRIEVAL_KEYWORD_ENABLED=false` to use pure vector search. Adjust the weights to tune the balance between semantic and lexical relevance.
-
-Inside Docker Compose, the backend uses compose-service addresses (`postgres:5432`, `redis:6379`) and `STORAGE_ROOT=/app/data/storage` regardless of host `.env` values. The `.env` URLs apply to non-Docker runs.
+The Vite dev server starts at `http://localhost:5173` with automatic API proxying to port 8080.
 
 ---
 
-## Project structure
+## Hybrid Search Tuning
 
-```
-veridoc-ai/
-├── .env.example            # environment template (copy to .env)
-├── .gitignore              # git ignore rules
-├── docker-compose.yml      # local development stack
-├── README.md               # this file
-├── PROJECT.txt             # product requirements & design spec
-├── backend/                # Java 21 / Spring Boot application
-│   ├── pom.xml
-│   └── src/
-│       ├── main/
-│       │   ├── java/...    # application source
-│       │   └── resources/
-│       │       ├── application.yml   # Spring Boot configuration
-│       │       └── db/migration/     # Flyway migrations
-│       └── test/...        # unit + integration tests
-├── frontend/               # React 19 / Vite / TypeScript application
-│   ├── package.json
-│   ├── nginx.conf
-│   └── src/
-└── docs/
-    ├── ARCHITECTURE.md     # components, ingestion, retrieval, security, data model
-    ├── API.md              # endpoints, payloads, SSE contract, error codes
-    └── DEPLOYMENT.md       # environment variables, volumes, operations
-```
+VeriDoc AI supports fine-grained tuning of hybrid retrieval weights in `.env`:
+
+| Variable | Description | Default |
+| :--- | :--- | :--- |
+| `RETRIEVAL_KEYWORD_ENABLED` | Toggle hybrid BM25 search alongside vector cosine search | `true` |
+| `RETRIEVAL_VECTOR_WEIGHT` | Relative weight for semantic vector similarity | `0.7` |
+| `RETRIEVAL_KEYWORD_WEIGHT` | Relative weight for lexical BM25 rank | `0.3` |
+| `RETRIEVAL_TOP_K` | Number of final chunks included in evidence context | `8` |
+| `RETRIEVAL_MIN_SCORE` | Minimum similarity score required to retain a chunk | `0.15` |
+
+When `RETRIEVAL_KEYWORD_ENABLED=false`, the system seamlessly switches to pure pgvector cosine retrieval.
 
 ---
 
-## Testing
+## Quality & Automated Verification
+
+The test harness validates functionality without requiring external provider network calls:
 
 ```bash
-# Backend: unit + integration tests (Testcontainers, disposable pgvector)
+# Backend unit tests and Testcontainers integration tests
 cd backend
-mvn verify
+mvn clean verify
 
-# Frontend: lint and production build
+# Frontend linting and TypeScript compilation
 cd ../frontend
 npm run lint
 npm run build
 ```
 
-Integration tests use a disposable pgvector container and deterministic Gemini/Groq stubs — no external API calls and no real PDFs required.
+- **Backend Tests**: 130+ unit tests, plus end-to-end RAG dataset evaluation gates run against deterministic stubs.
+- **Continuous Integration**: GitHub Actions automated pipeline validates all pull requests and pushes to `main`.
 
 ---
 
-## Documentation
+## Project Structure
 
-| Document | Description |
-|----------|-------------|
-| [Architecture](docs/ARCHITECTURE.md) | Components, ingestion pipeline, retrieval, security, data model |
-| [API](docs/API.md) | Endpoints, payloads, SSE contract, error codes |
-| [Deployment](docs/DEPLOYMENT.md) | Environment variables, volumes, operations |
-
----
-
-## Security
-
-- API keys (`GROQ_API_KEY`, `GEMINI_API_KEY`) and `JWT_SECRET` are backend-only and never bundled into frontend code
-- `.env` is gitignored — never commit real credentials
-- Vector retrieval always respects per-user authorization; a user can never retrieve another user's document chunks
-- Retrieved document content is treated as evidence, never as executable instructions (prompt-injection resistant)
-- Error responses never expose internal stack traces
+```text
+VeriDoc-AI/
+├── .github/workflows/        # GitHub Actions continuous integration pipeline
+├── backend/                  # Spring Boot 3.4 Java 21 service
+│   ├── src/main/java/        # Application modules (auth, rag, document, security)
+│   ├── src/main/resources/   # Configuration & Flyway database migrations
+│   └── src/test/             # Unit and Testcontainers integration suites
+├── frontend/                 # React 19 + TypeScript frontend application
+│   ├── src/components/       # UI components (chat, upload, viewer, citations)
+│   ├── src/hooks/            # Query & state management hooks
+│   └── nginx.conf            # Reverse proxy & static serving config
+├── docs/                     # Detailed architectural and API documentation
+│   ├── ARCHITECTURE.md       # In-depth system design & data model
+│   ├── API.md                # REST & SSE contracts
+│   └── DEPLOYMENT.md         # Operational guidelines
+├── docker-compose.yml        # Development environment orchestration
+└── .env.example              # Template for environment configuration
+```
 
 ---
 
 ## Roadmap
 
-- [x] User registration, login, and JWT authentication
-- [x] PDF upload, validation, and duplicate detection
-- [x] Asynchronous ingestion: extraction → chunking → embedding → indexing
-- [x] Vector search with per-user authorization in pgvector
-- [x] Grounded RAG answers with page-level citations
-- [x] Multi-turn, multi-document conversations with SSE streaming
-- [x] Rate limiting and structured error handling
-- [ ] OCR for scanned/image-only PDFs
-- [ ] Hybrid search (BM25 + vector)
-- [ ] Document sharing and workspaces
+- [x] JWT-based user authentication & owner isolation
+- [x] PDF asynchronous text extraction, token chunking, and batch embedding
+- [x] Vector nearest-neighbor indexing with PostgreSQL `pgvector`
+- [x] Hybrid search combining pgvector cosine similarity with `tsvector` BM25
+- [x] Low-latency Server-Sent Events (SSE) streaming answers
+- [x] Deterministic citation resolution with page-level verification
+- [x] Continuous evaluation test gate preventing hallucination regressions
+- [ ] OCR support for image-heavy and scanned documents
+- [ ] Multi-document cross-comparison and synthesis views
+- [ ] Role-based organization workspaces and document sharing
 
 ---
 
 ## Contributing
 
-Contributions are welcome! Please open an issue to discuss proposed changes, then submit a pull request.
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/your-feature`)
-3. Commit your changes (`git commit -m "feat: add your feature"`)
-4. Push to the branch (`git push origin feature/your-feature`)
-5. Open a pull request
+1. Fork the repository.
+2. Create your feature branch: `git checkout -b feature/amazing-feature`
+3. Commit your changes: `git commit -m "feat: add amazing feature"`
+4. Push to the branch: `git push origin feature/amazing-feature`
+5. Open a Pull Request.
 
 ---
 
-## License
+## Acknowledgments
 
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
-
----
-
-<p align="center">
-  <b>VeriDoc AI</b> · Evidence-Grounded Document Intelligence
-</p>
+Built with open-source technologies: Spring AI, pgvector, React, Vite, and Apache Tika.
