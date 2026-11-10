@@ -15,7 +15,7 @@ public record RetrievalProperties(
 
         @DefaultValue("20") int maxDocumentsPerConversation,
 
-        @DefaultValue("true") boolean keywordEnabled,
+        @DefaultValue("false") boolean keywordEnabled,
 
         @DefaultValue("20") int keywordCandidateK,
 
