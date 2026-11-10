@@ -1,6 +1,5 @@
 package com.veridoc.ai.evaluation.live;
 
-import java.util.List;
 import java.util.Objects;
 
 import org.springframework.boot.Banner;
@@ -61,29 +60,9 @@ public final class LiveEvalGuardedContext {
      */
     public static ConfigurableApplicationContext create(
             LiveEvalPreflight.Plan plan, Class<?> applicationClass, String... args) {
-        return create(plan, applicationClass, List.of(), args);
-    }
-
-    /**
-     * Starts the application context for a validated live run with additional sources.
-     */
-    public static ConfigurableApplicationContext create(
-            LiveEvalPreflight.Plan plan, Class<?> applicationClass,
-            List<Class<?>> additionalSources, String... args) {
 
         Objects.requireNonNull(plan, "a live context requires a validated preflight plan");
         Objects.requireNonNull(applicationClass, "an application class must be provided");
-        List<Class<?>> sources = additionalSources == null ? List.of() : List.copyOf(additionalSources);
-        for (Class<?> source : sources) {
-            if (source == null) {
-                continue;
-            }
-            String name = source.getSimpleName();
-            if (name.equals("IngestionTestConfig") || name.equals("DeterministicEmbeddingModel")
-                    || name.equals("DeterministicChatModel")) {
-                throw new IllegalArgumentException("Live evaluation must not import stub/test ingestion models");
-            }
-        }
 
         // Last cheap check before anything is built: a run whose time box is
         // already gone must not even start its context.
@@ -97,15 +76,12 @@ public final class LiveEvalGuardedContext {
                 context -> context.getBeanFactory()
                         .addBeanPostProcessor(new BudgetedModelBeanPostProcessor(budget));
 
-        SpringApplicationBuilder builder = new SpringApplicationBuilder(applicationClass)
+        return new SpringApplicationBuilder(applicationClass)
                 .web(WebApplicationType.NONE)
                 .profiles("eval-live")
                 .bannerMode(Banner.Mode.OFF)
                 .logStartupInfo(false)
-                .initializers(budgetedModels);
-        if (!sources.isEmpty()) {
-            builder.sources(sources.toArray(new Class[0]));
-        }
-        return builder.run(args);
+                .initializers(budgetedModels)
+                .run(args);
     }
 }
