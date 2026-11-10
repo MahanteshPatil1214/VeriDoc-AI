@@ -1,8 +1,14 @@
+<div align="center">
+
 # VeriDoc AI
 
-**Evidence-Grounded Document Intelligence — Local Development**
+### Evidence-Grounded Document Intelligence
 
-Upload PDFs, ask questions in natural language, and get answers generated **only from your documents** — with inline citations you can verify. If the uploaded documents cannot support an answer, VeriDoc AI refuses instead of hallucinating.
+<p>
+Upload PDFs, ask questions in natural language, and get answers generated <b>only from your documents</b> — with inline citations you can verify. If the uploaded documents cannot support an answer, VeriDoc AI refuses instead of hallucinating.
+</p>
+
+
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Java 21](https://img.shields.io/badge/Java-21-007396?logo=java&logoColor=white)](https://adoptium.net/)
@@ -16,6 +22,7 @@ Upload PDFs, ask questions in natural language, and get answers generated **only
 [![Docker Compose](https://img.shields.io/badge/Docker%20Compose-latest-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
 [![Groq](https://img.shields.io/badge/AI-Groq-000000)](https://groq.com/)
 [![Google Gemini](https://img.shields.io/badge/AI-Google%20Gemini-4285F4)](https://ai.google.dev/)
+</div>
 
 ---
 
