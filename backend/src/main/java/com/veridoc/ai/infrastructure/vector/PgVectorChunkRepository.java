@@ -136,7 +136,7 @@ public class PgVectorChunkRepository {
                        c.token_count              AS token_count,
                        c.content_hash             AS content_hash,
                        d.filename                 AS filename,
-                       1.0d                       AS distance,
+                       1.0                        AS distance,
                        ts_rank_cd(c.search_vector, plainto_tsquery('english', :query))
                                                         AS keyword_rank
                 FROM document_chunks c
