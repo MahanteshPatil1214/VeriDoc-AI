@@ -108,16 +108,22 @@ public class RetrievalService {
                 embeddingProperties.model(), embeddingProperties.version(),
                 retrievalProperties.candidateK());
 
-        List<RetrievedChunkRow> keywordCandidates = List.of();
-        if (retrievalProperties.keywordEnabled()) {
-            long tk = System.currentTimeMillis();
-            keywordCandidates = pgVectorChunkRepository.keywordSearch(
-                    ownerId, documentIds, effectiveQuery,
-                    embeddingProperties.model(), embeddingProperties.version(),
-                    retrievalProperties.keywordCandidateK());
-            log.info("retrieval.keyword.done elapsedMs={} candidates={}",
-                    System.currentTimeMillis() - tk, keywordCandidates.size());
+        if (!retrievalProperties.keywordEnabled()) {
+            log.info("retrieval.search.done elapsedMs={} candidates={} docs={}",
+                    System.currentTimeMillis() - ts, vectorCandidates.size(), documentIds.size());
+            return vectorCandidates.stream()
+                    .filter(row -> row.similarity() >= retrievalProperties.minScore())
+                    .limit(retrievalProperties.topK())
+                    .toList();
         }
+
+        long tk = System.currentTimeMillis();
+        List<RetrievedChunkRow> keywordCandidates = pgVectorChunkRepository.keywordSearch(
+                ownerId, documentIds, effectiveQuery,
+                embeddingProperties.model(), embeddingProperties.version(),
+                retrievalProperties.keywordCandidateK());
+        log.info("retrieval.keyword.done elapsedMs={} candidates={}",
+                System.currentTimeMillis() - tk, keywordCandidates.size());
 
         List<RetrievedChunkRow> merged = mergeAndRank(vectorCandidates, keywordCandidates);
         log.info("retrieval.search.done elapsedMs={} vectorCandidates={} keywordCandidates={} merged={} docs={}",
@@ -127,7 +133,8 @@ public class RetrievalService {
         double vectorWeight = retrievalProperties.normalisedVectorWeight();
         double keywordWeight = retrievalProperties.normalisedKeywordWeight();
         return merged.stream()
-                .filter(row -> row.hybridScore(vectorWeight, keywordWeight) >= retrievalProperties.minScore())
+                .filter(row -> row.similarity() >= retrievalProperties.minScore()
+                        || row.hybridScore(vectorWeight, keywordWeight) >= retrievalProperties.minScore())
                 .limit(retrievalProperties.topK())
                 .toList();
     }

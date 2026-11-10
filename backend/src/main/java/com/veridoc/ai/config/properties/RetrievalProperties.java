@@ -15,7 +15,7 @@ public record RetrievalProperties(
 
         @DefaultValue("20") int maxDocumentsPerConversation,
 
-        @DefaultValue("false") boolean keywordEnabled,
+        @DefaultValue("true") boolean keywordEnabled,
 
         @DefaultValue("20") int keywordCandidateK,
 
@@ -56,12 +56,18 @@ public record RetrievalProperties(
 
     /** Normalised weight for the vector (cosine similarity) component. */
     public double normalisedVectorWeight() {
+        if (!keywordEnabled) {
+            return 1.0;
+        }
         double total = vectorWeight + keywordWeight;
         return total == 0.0 ? 1.0 : vectorWeight / total;
     }
 
     /** Normalised weight for the keyword (BM25 / ts_rank) component. */
     public double normalisedKeywordWeight() {
+        if (!keywordEnabled) {
+            return 0.0;
+        }
         double total = vectorWeight + keywordWeight;
         return total == 0.0 ? 0.0 : keywordWeight / total;
     }
